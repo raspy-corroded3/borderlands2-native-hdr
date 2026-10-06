@@ -16,7 +16,7 @@
 #include "vtable_index.h"
 
 #ifndef BL2HDR_VERSION
-#define BL2HDR_VERSION "1.0.0-beta.1"
+#define BL2HDR_VERSION "1.0.0-beta.2"
 #endif
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
