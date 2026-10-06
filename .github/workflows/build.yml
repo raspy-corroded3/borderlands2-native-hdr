@@ -1,0 +1,38 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (Release, x86)
+        shell: cmd
+        run: call build.cmd Release
+      - name: Check the DLL is 32-bit with the expected exports
+        shell: pwsh
+        run: |
+          $dll = "build/Release/d3d9.dll"
+          if (-not (Test-Path $dll)) { throw "d3d9.dll not built" }
+          $bytes = [System.IO.File]::ReadAllBytes($dll)
+          $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+          $machine = [BitConverter]::ToUInt16($bytes, $pe + 4)
+          if ($machine -ne 0x14c) { throw ("not x86: machine 0x{0:X}" -f $machine) }
+          $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+          foreach ($e in "Direct3DCreate9", "Direct3DCreate9Ex", "D3DPERF_BeginEvent") {
+            if (-not $text.Contains($e)) { throw "missing export $e" }
+          }
+          Write-Host "OK: x86 DLL, $((Get-Item $dll).Length) bytes"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bl2hdr
+          path: |
+            build/Release/d3d9.dll
+            dist/bl2hdr.ini
+            README.md
+            LICENSE
+            THIRD_PARTY_NOTICES.md

@@ -1,0 +1,11 @@
+# build output
+build/
+out/
+.vs/
+*.user
+
+# never commit game files or anything extracted from them
+*.cso
+*.upk
+*.pfm
+original/
