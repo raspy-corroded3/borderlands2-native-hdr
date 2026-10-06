@@ -17,6 +17,9 @@ struct Settings {
   // available when chaining to the system d3d9.dll; required for the HDR output) or "native".
   std::wstring mode = L"9on12";
   bool Use9On12() const { return _wcsicmp(mode.c_str(), L"9on12") == 0; }
+  // [d3d9] Gpu: graphics card for 9on12 - "high-performance" (default: the fastest GPU, e.g. the dedicated
+  // one in a laptop with two), "minimum-power" (the integrated one) or "system" (9on12's own choice).
+  std::wstring gpu = L"high-performance";
   // [output] Mode: "dxgi" (default: our swapchain via 9on12 interop) or "d3d9" (game's own Present).
   std::wstring output = L"dxgi";
   bool UseDxgiOutput() const { return _wcsicmp(output.c_str(), L"dxgi") == 0; }

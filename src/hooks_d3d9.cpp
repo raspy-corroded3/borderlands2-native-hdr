@@ -36,21 +36,23 @@ namespace {
 // ---------- vtable patching ----------
 struct Slot {
   std::mutex mutex;
-  std::unordered_map<void**, void*> originals;  // vtable -> original function
+  using Map = std::unordered_map<void**, void*>;
+  Map originals;  // vtable -> original function; entries are never erased or changed
 
-  // Lock-free fast path for the common case of a single implementation (hot hooks run per draw).
-  std::atomic<void**> last_vtbl{nullptr};
-  std::atomic<void*> last_fn{nullptr};
+  // Lock-free fast path for the common case of a single implementation (hot hooks run per draw):
+  // the last map entry used. One pointer, so vtable and function are always read as a pair; map
+  // nodes do not move on rehash and are never erased, so the pointer stays valid.
+  std::atomic<const Map::value_type*> last{nullptr};
 
   template <typename F>
   F Original(void* self) {
     void** vtbl = *static_cast<void***>(self);
-    if (last_vtbl.load(std::memory_order_acquire) == vtbl) return reinterpret_cast<F>(last_fn.load());
+    const Map::value_type* entry = last.load(std::memory_order_acquire);
+    if (entry && entry->first == vtbl) return reinterpret_cast<F>(entry->second);
     std::lock_guard lock(mutex);
     auto it = originals.find(vtbl);
     if (it == originals.end()) return nullptr;
-    last_fn.store(it->second);
-    last_vtbl.store(vtbl, std::memory_order_release);
+    last.store(&*it, std::memory_order_release);
     return reinterpret_cast<F>(it->second);
   }
 
@@ -170,15 +172,21 @@ void MaybeLogStats() {
 }
 
 // Process memory, to tell address-space exhaustion (32-bit game) from running out of video memory:
-// free address space and its largest free block, committed private bytes, local video memory vs budget.
+// free address space and its largest free block, committed private bytes, local video memory vs budget,
+// and what the used address space holds (DLL images, mapped views, private; reserved-only counted apart).
 void LogMemory() {
   MEMORYSTATUSEX ms{};
   ms.dwLength = sizeof(ms);
   GlobalMemoryStatusEx(&ms);
-  unsigned long long largest = 0;
+  unsigned long long largest = 0, image = 0, mapped = 0, priv = 0, reserved = 0;
   MEMORY_BASIC_INFORMATION mbi{};
   for (const char* p = nullptr; VirtualQuery(p, &mbi, sizeof(mbi)) == sizeof(mbi);) {
     if (mbi.State == MEM_FREE && mbi.RegionSize > largest) largest = mbi.RegionSize;
+    if (mbi.State == MEM_RESERVE) {
+      reserved += mbi.RegionSize;
+    } else if (mbi.State == MEM_COMMIT) {
+      (mbi.Type == MEM_IMAGE ? image : mbi.Type == MEM_MAPPED ? mapped : priv) += mbi.RegionSize;
+    }
     const char* next = static_cast<const char*>(mbi.BaseAddress) + mbi.RegionSize;
     if (next <= p) break;
     p = next;
@@ -194,6 +202,8 @@ void LogMemory() {
   }
   log::Info("memory: address space free %.0f of %.0f MiB (largest block %.0f MiB), private %.0f MiB, video %s",
             ms.ullAvailVirtual / kMiB, ms.ullTotalVirtual / kMiB, largest / kMiB, pmc.PrivateUsage / kMiB, vram_text);
+  log::Info("memory: committed address space: images %.0f MiB, mapped %.0f MiB, private %.0f MiB; reserved %.0f MiB",
+            image / kMiB, mapped / kMiB, priv / kMiB, reserved / kMiB);
 }
 
 // ---------- one-frame trace (milestone 4 HDR stage) ----------

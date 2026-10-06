@@ -45,8 +45,9 @@ float3 TestPattern(float2 p) {
 
 float4 ps_main(VSOut i) : SV_TARGET {
   if (debug_mode > 1.5) return float4(TestPattern(i.pos.xy), 1.0);
-  float3 c = game_image.Load(int3(i.pos.xy, 0)).rgb;
-  float3 linear_color = sign(c) * pow(abs(c), input_gamma) * paper_white_scale;
+  // Negative and NaN values (bad game pixels) become 0: SM5 max() returns the non-NaN operand.
+  float3 c = max(game_image.Load(int3(i.pos.xy, 0)).rgb, 0.0);
+  float3 linear_color = pow(c, input_gamma) * paper_white_scale;
   linear_color = min(linear_color, peak_scale);
   if (debug_mode > 0.5 && max(c.r, max(c.g, c.b)) > 1.0) linear_color = float3(peak_scale, 0.0, peak_scale);
   return float4(linear_color, 1.0);

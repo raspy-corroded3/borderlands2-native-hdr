@@ -24,6 +24,8 @@ void Load() {
   g_settings.chain = buf;
   GetPrivateProfileStringW(L"d3d9", L"Mode", L"9on12", buf, MAX_PATH, ini.c_str());
   g_settings.mode = buf;
+  GetPrivateProfileStringW(L"d3d9", L"Gpu", L"high-performance", buf, MAX_PATH, ini.c_str());
+  g_settings.gpu = buf;
   GetPrivateProfileStringW(L"shaders", L"Tonemap", L"hdr", buf, MAX_PATH, ini.c_str());
   if (_wcsicmp(buf, L"replica") == 0) {
     g_settings.tonemap = TonemapVariant::kReplica;

@@ -102,6 +102,10 @@ checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a do
 - The cel-shading edge shaders are not yet reviewed for HDR values.
 - Frame captures (developer feature) can fail right after a resolution change.
 - Only tested with the base game and a few DLC maps; only on NVIDIA.
+- BL2 is a 32-bit game and 9on12 uses about 300 MiB more of its 4 GiB address space than plain D3D9. After
+  long sessions the game can stop with "ran out of video memory" even though the GPU has plenty left. If
+  that happens, lower the texture pool in `Documents\My Games\Borderlands 2\WillowGame\Config\WillowEngine.ini`:
+  `[TextureStreaming]` `PoolSize=256` (instead of 512 or higher).
 
 ## Credits and licence
 MIT licence — see [LICENSE](LICENSE). Third-party references and credits:
