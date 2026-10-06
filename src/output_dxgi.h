@@ -19,4 +19,7 @@ void OnReset();
 // Capture the next presented source frame (FP16 substitute or 8-bit back buffer) to
 // <exe dir>\bl2hdr_captures\<label>.pfm and log HDR statistics. Only works on the dxgi output path.
 void RequestCapture(const std::string& label);
+// Local (dedicated) video memory used by this process and the OS budget for it, in bytes.
+// False until the dxgi output is running.
+bool VideoMemory(unsigned long long* usage, unsigned long long* budget);
 }  // namespace bl2hdr::output

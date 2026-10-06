@@ -87,10 +87,15 @@ void RunConsoleCommand(const std::wstring& cmd) {
 
 void Resolve();
 std::atomic<bool> g_need_resolve{false};
+// Game thread only: when a failed lookup is tried again (0 = no retry pending), and how many tries remain.
+constexpr double kRetryDelaySec = 10.0;
+double g_retry_at = 0.0;
+int g_retries_left = 5;
 
 // ---- hooks (game thread) ----
 bool OnProcessEvent(ue3::UObject* obj, ue3::UFunction* fn, void* params, bool post) {
-  if (g_need_resolve.exchange(false)) Resolve();  // object lookups happen on the game thread
+  // Object lookups happen on the game thread.
+  if (g_need_resolve.exchange(false) || (g_retry_at > 0.0 && Seconds() >= g_retry_at)) Resolve();
   if (!post) {
     // Timed console commands for automated tests ([debug] ConsoleAtSec), run on the game thread.
     const auto& cmds = config::Get().console_at_sec;
@@ -144,6 +149,7 @@ void OnFirstPresent() {
 
 namespace {
 void Resolve() {
+  g_retry_at = 0.0;
   ue3::SelfCheck();
   g_populate = ue3::FindFunction("WillowGame.WillowScrollingListDataProviderVideoOptions.Populate");
   g_on_spinner = ue3::FindFunction("WillowGame.WillowScrollingList.OnSpinnerValueChange");
@@ -158,8 +164,13 @@ void Resolve() {
   if (!config::Get().menu_hdr_option) {
     g_populate = g_on_spinner = nullptr;  // option disabled: keep only console automation
   } else if (!menu_ok) {
-    log::Error("menu: required functions not found - HDR option disabled");
     g_populate = g_on_spinner = nullptr;
+    if (g_retries_left-- > 0) {
+      log::Warn("menu: required functions not found yet - trying again in %.0f s", kRetryDelaySec);
+      g_retry_at = Seconds() + kRetryDelaySec;
+    } else {
+      log::Error("menu: required functions not found - HDR option disabled");
+    }
   }
   g_active = true;
   log::Info("menu: active (HDR option %s, HDR currently %s)", g_populate ? "on" : "off", g_enabled ? "ON" : "OFF");

@@ -44,8 +44,13 @@ void SafeRelease(T*& p) {
 struct State {
   HWND hwnd = nullptr;
   UINT width = 0, height = 0;
-  bool failed = false;  // permanent failure -> caller falls back to D3D9 Present
-  int enabled = -1;     // -1 unknown, 0 no, 1 yes (cached per device)
+  // Failures are retried: D3D9's own Present does not reach the screen under 9on12 (windowed), so
+  // giving up for good would leave a black screen. Retries back off (in Presents) and restart on Reset.
+  unsigned fail_streak = 0;
+  unsigned long long presents = 0;  // Presents seen by Enabled(), for the retry back-off
+  unsigned long long retry_at = 0;  // no output attempt before this Present
+  bool removed = false;  // D3D12 device removed/hung: nothing of ours can run on it any more
+  int enabled = -1;      // -1 unknown, 0 no, 1 yes (cached per device)
   bool hdr = false;     // HDR path active for the current swapchain
   IDirect3DDevice9On12* on12 = nullptr;
   ID3D12Device* dev = nullptr;
@@ -69,6 +74,7 @@ struct State {
   int present_errors = 0;
   // automated-test capture
   std::string pending_capture;  // label of the next capture ("" = none)
+  IDXGIAdapter3* adapter = nullptr;  // for VideoMemory(), created on first use
 };
 State g;
 
@@ -219,18 +225,41 @@ void FinishCapture(Capture* cap) {
   }
 }
 
-void WaitForFence(UINT64 value) {
-  if (g.fence && g.fence->GetCompletedValue() < value) {
-    g.fence->SetEventOnCompletion(value, g.fence_event);
-    WaitForSingleObject(g.fence_event, 2000);
+// True when the D3D12 device is gone (logs the reason once). `hr` is the result that raised the
+// suspicion; the device's own removed reason is checked as well.
+bool CheckRemoved(const char* where, HRESULT hr) {
+  if (g.removed) return true;
+  const HRESULT reason = g.dev ? g.dev->GetDeviceRemovedReason() : S_OK;
+  const bool lost = hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET ||
+                    hr == DXGI_ERROR_DEVICE_HUNG || FAILED(reason);
+  if (!lost) return false;
+  g.removed = true;
+  log::Error("output(dxgi): GPU device removed or hung (%s: hr=0x%08lX, removed reason 0x%08lX) - our output stops; "
+             "the game continues on D3D9 Present",
+             where, static_cast<unsigned long>(hr), static_cast<unsigned long>(reason));
+  return true;
+}
+
+// Waits until the GPU reached `value`. False on timeout or device removal (the work is still pending or
+// never completes): the caller must not reuse what that work references.
+bool WaitForFence(UINT64 value, DWORD timeout_ms = 5000) {
+  if (!g.fence || g.fence->GetCompletedValue() >= value) return true;
+  if (FAILED(g.fence->SetEventOnCompletion(value, g.fence_event)) ||
+      WaitForSingleObject(g.fence_event, timeout_ms) != WAIT_OBJECT_0) {
+    if (!CheckRemoved("fence wait", S_OK)) {
+      log::Warn("output(dxgi): GPU did not reach fence %llu within %lu ms (completed %llu)", value, timeout_ms,
+                g.fence->GetCompletedValue());
+    }
+    return g.fence->GetCompletedValue() >= value;
   }
+  return true;
 }
 
 void ReleaseAll() {
-  if (g.queue && g.fence) {
+  if (g.queue && g.fence && !g.removed) {
     ++g.fence_value;
     g.queue->Signal(g.fence, g.fence_value);
-    WaitForFence(g.fence_value);
+    WaitForFence(g.fence_value, 10000);
   }
   SafeRelease(g.pso);
   SafeRelease(g.root_sig);
@@ -242,6 +271,7 @@ void ReleaseAll() {
   SafeRelease(g.alloc[1]);
   SafeRelease(g.fence);
   SafeRelease(g.queue);
+  SafeRelease(g.adapter);
   SafeRelease(g.dev);
   SafeRelease(g.on12);
   if (g.fence_event) {
@@ -263,9 +293,16 @@ const char* DxgiFormatName(DXGI_FORMAT f) {
   }
 }
 
+// Releases everything and schedules a retry: after 1, 2, 4 ... Presents, at most every 256.
 bool Fail(const char* what, HRESULT hr) {
-  log::Error("output(dxgi): %s failed hr=0x%08lX - falling back to D3D9 Present", what, static_cast<unsigned long>(hr));
-  g.failed = true;
+  CheckRemoved(what, hr);
+  ++g.fail_streak;
+  const unsigned long long wait = 1ull << std::min(g.fail_streak - 1, 8u);
+  g.retry_at = g.presents + wait;
+  if (g.fail_streak <= 5 || g.fail_streak % 50 == 0) {
+    log::Error("output(dxgi): %s failed hr=0x%08lX (failure %u in a row) - %s", what, static_cast<unsigned long>(hr),
+               g.fail_streak, g.removed ? "device removed, not retrying" : "retrying shortly");
+  }
   ReleaseAll();
   return false;
 }
@@ -433,7 +470,8 @@ bool Init(IDirect3DDevice9* device) {
     hr = (support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT) ? g.swapchain->SetColorSpace1(cs) : E_FAIL;
     log::Info("output(dxgi): scRGB colour space support=0x%X, SetColorSpace1 hr=0x%08lX", support,
               static_cast<unsigned long>(hr));
-    if (FAILED(hr)) return Fail("SetColorSpace1(scRGB)", hr);
+    // Not fatal: scRGB is already the default colour space of an FP16 flip-model swapchain.
+    if (FAILED(hr)) log::Warn("output(dxgi): SetColorSpace1(scRGB) not accepted - using the FP16 default (scRGB)");
     if (!CreateEncodePipeline()) return false;
   }
 
@@ -522,7 +560,8 @@ void SetWindow(HWND hwnd, UINT width, UINT height) {
 }
 
 bool Enabled(IDirect3DDevice9* device) {
-  if (!config::Get().UseDxgiOutput() || g.failed) return false;
+  if (!config::Get().UseDxgiOutput() || g.removed) return false;
+  if (++g.presents < g.retry_at) return false;  // backing off after a failure
   if (g.enabled < 0) {
     IDirect3DDevice9On12* on12 = nullptr;
     g.enabled = SUCCEEDED(device->QueryInterface(__uuidof(IDirect3DDevice9On12), reinterpret_cast<void**>(&on12))) ? 1 : 0;
@@ -547,6 +586,14 @@ HRESULT Present(IDirect3DDevice9* device) {
   }
   if (!g.swapchain && !Init(device)) return E_FAIL;
 
+  // The command allocator for this frame must be idle before it is reset. If the GPU is that far behind
+  // (or gone), drop this frame instead of resetting memory the GPU may still read.
+  const UINT a = static_cast<UINT>(g.frames % 2);
+  if (!WaitForFence(g.alloc_fence[a])) {
+    if (g.removed) ReleaseAll();
+    return E_FAIL;
+  }
+
   // Source: the FP16 substitute back buffer (HDR) or the real back buffer (SDR).
   IDirect3DResource9* src9 = nullptr;
   IDirect3DSurface9* bb = nullptr;
@@ -556,8 +603,7 @@ HRESULT Present(IDirect3DDevice9* device) {
   } else {
     HRESULT hr = device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &bb);
     if (FAILED(hr) || !bb) {
-      log::Error("output(dxgi): GetBackBuffer failed hr=0x%08lX", static_cast<unsigned long>(hr));
-      g.failed = true;
+      Fail("GetBackBuffer", hr);
       return E_FAIL;
     }
     src9 = bb;
@@ -566,16 +612,21 @@ HRESULT Present(IDirect3DDevice9* device) {
   ID3D12Resource* src = nullptr;
   HRESULT hr = g.on12->UnwrapUnderlyingResource(src9, g.queue, __uuidof(ID3D12Resource), reinterpret_cast<void**>(&src));
   if (FAILED(hr) || !src) {
-    log::Error("output(dxgi): UnwrapUnderlyingResource(%s) failed hr=0x%08lX", g.hdr ? "substitute back buffer" : "back buffer",
-               static_cast<unsigned long>(hr));
     src9->Release();
-    g.failed = true;
+    Fail(g.hdr ? "UnwrapUnderlyingResource(substitute back buffer)" : "UnwrapUnderlyingResource(back buffer)", hr);
     return E_FAIL;
   }
 
   const UINT index = g.swapchain->GetCurrentBackBufferIndex();
   ID3D12Resource* dst = nullptr;
-  g.swapchain->GetBuffer(index, __uuidof(ID3D12Resource), reinterpret_cast<void**>(&dst));
+  hr = g.swapchain->GetBuffer(index, __uuidof(ID3D12Resource), reinterpret_cast<void**>(&dst));
+  if (FAILED(hr) || !dst) {
+    g.on12->ReturnUnderlyingResource(src9, 0, nullptr, nullptr);  // nothing of ours was queued on it
+    src->Release();
+    src9->Release();
+    Fail("IDXGISwapChain::GetBuffer", hr);
+    return E_FAIL;
+  }
   if (g.frames == 0) {
     const D3D12_RESOURCE_DESC sdesc = src->GetDesc();
     const D3D12_RESOURCE_DESC ddesc = dst->GetDesc();
@@ -584,8 +635,6 @@ HRESULT Present(IDirect3DDevice9* device) {
               ddesc.Height, DxgiFormatName(ddesc.Format));
   }
 
-  const UINT a = static_cast<UINT>(g.frames % 2);
-  WaitForFence(g.alloc_fence[a]);
   g.alloc[a]->Reset();
   g.list->Reset(g.alloc[a], g.hdr ? g.pso : nullptr);
   if (g.hdr) {
@@ -617,16 +666,50 @@ HRESULT Present(IDirect3DDevice9* device) {
   src9->Release();
 
   hr = g.swapchain->Present(0, g.tearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
-  if (FAILED(hr) && g.present_errors++ < 5) {
-    log::Error("output(dxgi): Present failed hr=0x%08lX", static_cast<unsigned long>(hr));
+  if (FAILED(hr)) {
+    if (CheckRemoved("IDXGISwapChain::Present", hr)) {
+      SafeRelease(cap.readback);
+      ReleaseAll();
+      return E_FAIL;  // the game's own Present reports the lost device to it
+    }
+    if (g.present_errors++ < 5) log::Error("output(dxgi): Present failed hr=0x%08lX", static_cast<unsigned long>(hr));
   }
   if (g.frames == 0) log::Info("output(dxgi): first frame presented hr=0x%08lX", static_cast<unsigned long>(hr));
+  if (g.fail_streak > 0) {
+    log::Info("output(dxgi): output recovered after %u failure(s)", g.fail_streak);
+    g.fail_streak = 0;
+  }
   if (capturing) {
-    WaitForFence(g.alloc_fence[a]);  // one-off stall: the copy must be finished before mapping
-    FinishCapture(&cap);
+    // One-off stall: the copy must be finished before mapping.
+    if (WaitForFence(g.alloc_fence[a], 10000)) {
+      FinishCapture(&cap);
+    } else {
+      SafeRelease(cap.readback);
+    }
   }
   ++g.frames;
   return D3D_OK;
+}
+
+bool VideoMemory(unsigned long long* usage, unsigned long long* budget) {
+  if (!g.dev) return false;
+  if (!g.adapter) {
+    using CreateFactory2_t = HRESULT(WINAPI*)(UINT, REFIID, void**);
+    HMODULE dxgi = GetModuleHandleW(L"dxgi.dll");
+    auto create_factory = dxgi ? reinterpret_cast<CreateFactory2_t>(GetProcAddress(dxgi, "CreateDXGIFactory2")) : nullptr;
+    IDXGIFactory4* factory = nullptr;
+    if (!create_factory || FAILED(create_factory(0, __uuidof(IDXGIFactory4), reinterpret_cast<void**>(&factory)))) {
+      return false;
+    }
+    factory->EnumAdapterByLuid(g.dev->GetAdapterLuid(), __uuidof(IDXGIAdapter3), reinterpret_cast<void**>(&g.adapter));
+    factory->Release();
+    if (!g.adapter) return false;
+  }
+  DXGI_QUERY_VIDEO_MEMORY_INFO info{};
+  if (FAILED(g.adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info))) return false;
+  *usage = info.CurrentUsage;
+  *budget = info.Budget;
+  return true;
 }
 
 void RequestCapture(const std::string& label) {
@@ -641,6 +724,8 @@ void OnReset() {
   if (g.swapchain || g.on12) log::Info("output(dxgi): releasing swapchain for device Reset");
   ReleaseAll();
   g.enabled = -1;
+  g.fail_streak = 0;  // a Reset is a fresh start: retry immediately
+  g.retry_at = 0;
 }
 
 }  // namespace bl2hdr::output

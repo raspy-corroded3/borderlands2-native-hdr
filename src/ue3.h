@@ -60,7 +60,8 @@ class Params {
   std::string Describe() const;  // "name@offset(size) ..." for logging
  private:
   struct Prop { std::string name, cls; int32_t offset, size; uint32_t flags; uint32_t bool_mask; };
-  const Prop* Find(const char* name) const;
+  // The named parameter if it holds at least `bytes` (every kept Prop lies inside buf_).
+  const Prop* Find(const char* name, size_t bytes) const;
   UFunction* fn_;
   std::vector<uint8_t> buf_;
   std::vector<Prop> props_;

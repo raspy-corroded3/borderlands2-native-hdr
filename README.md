@@ -10,7 +10,7 @@ A drop-in `d3d9.dll` that adds **real HDR output** to Borderlands 2 (PC, Steam),
 - Live on/off toggle in **Options → Video → HDR**, remembered between sessions.
 - A built-in peak-brightness test pattern to match your display.
 
-> **Status: beta (1.0.0-beta.1).** Tested on one system (Windows 11, NVIDIA RTX 3070 Ti, Samsung
+> **Status: beta (1.0.0-beta.2).** Tested on one system (Windows 11, NVIDIA RTX 3070 Ti, Samsung
 > Odyssey G6 HDR600). Reports from other hardware are very welcome — open an issue with your GPU,
 > driver, display and `bl2hdr.log` (from `Binaries\Win32`).
 
@@ -102,6 +102,10 @@ checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a do
 - The cel-shading edge shaders are not yet reviewed for HDR values.
 - Frame captures (developer feature) can fail right after a resolution change.
 - Only tested with the base game and a few DLC maps; only on NVIDIA.
+- BL2 is a 32-bit game and 9on12 uses about 300 MiB more of its 4 GiB address space than plain D3D9. After
+  long sessions the game can stop with "ran out of video memory" even though the GPU has plenty left. If
+  that happens, lower the texture pool in `Documents\My Games\Borderlands 2\WillowGame\Config\WillowEngine.ini`:
+  `[TextureStreaming]` `PoolSize=256` (instead of 512 or higher).
 
 ## Credits and licence
 MIT licence — see [LICENSE](LICENSE). Third-party references and credits:

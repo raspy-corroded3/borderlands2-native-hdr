@@ -1,5 +1,8 @@
 #include "proxy.h"
 
+#include <d3d12.h>
+#include <dxgi1_6.h>
+
 #include <mutex>
 #include <string>
 
@@ -24,6 +27,51 @@ template <typename T>
 void Resolve(T& out, const char* name) {
   out = reinterpret_cast<T>(GetProcAddress(g_real.module, name));
   if (!out) log::Warn("real d3d9: export %s not found", name);
+}
+
+// The D3D12 device for 9on12 on the GPU chosen by [d3d9] Gpu. Without one, 9on12 uses the default adapter,
+// which on a laptop with two GPUs is usually the integrated one. nullptr = let 9on12 choose.
+ID3D12Device* CreateD3D12Device() {
+  const std::wstring& gpu = config::Get().gpu;
+  DXGI_GPU_PREFERENCE pref;
+  if (_wcsicmp(gpu.c_str(), L"high-performance") == 0) {
+    pref = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
+  } else if (_wcsicmp(gpu.c_str(), L"minimum-power") == 0) {
+    pref = DXGI_GPU_PREFERENCE_MINIMUM_POWER;
+  } else {
+    if (_wcsicmp(gpu.c_str(), L"system") != 0) log::Warn("[d3d9] Gpu='%ls' unknown - using the system's choice", gpu.c_str());
+    return nullptr;
+  }
+  using CreateFactory_t = HRESULT(WINAPI*)(REFIID, void**);
+  HMODULE dxgi = LoadLibraryW(L"dxgi.dll");
+  HMODULE d3d12 = LoadLibraryW(L"d3d12.dll");
+  auto create_factory = dxgi ? reinterpret_cast<CreateFactory_t>(GetProcAddress(dxgi, "CreateDXGIFactory1")) : nullptr;
+  auto create_device = d3d12 ? reinterpret_cast<PFN_D3D12_CREATE_DEVICE>(GetProcAddress(d3d12, "D3D12CreateDevice")) : nullptr;
+  IDXGIFactory6* factory = nullptr;
+  if (!create_factory || !create_device ||
+      FAILED(create_factory(__uuidof(IDXGIFactory6), reinterpret_cast<void**>(&factory)))) {
+    log::Warn("GPU selection unavailable (needs Windows 10 1803+) - using the system's choice");
+    return nullptr;
+  }
+  ID3D12Device* dev = nullptr;
+  IDXGIAdapter1* adapter = nullptr;
+  for (UINT i = 0; !dev && SUCCEEDED(factory->EnumAdapterByGpuPreference(i, pref, __uuidof(IDXGIAdapter1),
+                                                                          reinterpret_cast<void**>(&adapter)));
+       ++i) {
+    DXGI_ADAPTER_DESC1 desc{};
+    adapter->GetDesc1(&desc);
+    if (!(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) {
+      const HRESULT hr = create_device(adapter, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&dev));
+      log::Info("GPU %u for 9on12 (%ls): '%ls' -> hr=0x%08lX", i, gpu.c_str(), desc.Description,
+                static_cast<unsigned long>(hr));
+      if (FAILED(hr)) dev = nullptr;
+    }
+    adapter->Release();
+    adapter = nullptr;
+  }
+  factory->Release();
+  if (!dev) log::Warn("no D3D12 device on a hardware GPU - using the system's choice");
+  return dev;
 }
 }  // namespace
 
@@ -75,9 +123,13 @@ IDirect3D9* WINAPI Proxy_Direct3DCreate9(UINT sdk_version) {
       log::Warn("Mode=9on12 but the real d3d9 has no Direct3DCreate9On12 (chained DLL?) - using native");
     } else {
       D3D9ON12_ARGS args = {};
-      args.Enable9On12 = TRUE;  // let 9on12 create its own D3D12 device on the default adapter
+      args.Enable9On12 = TRUE;
+      ID3D12Device* d12 = proxy::CreateD3D12Device();
+      args.pD3D12Device = d12;  // nullptr: 9on12 creates its own device on the default adapter
       IDirect3D9* d3d = create_9on12(sdk_version, &args, 1);
-      log::Info("Direct3DCreate9On12(sdk=%u) -> %p", sdk_version, static_cast<void*>(d3d));
+      log::Info("Direct3DCreate9On12(sdk=%u, own device %p) -> %p", sdk_version, static_cast<void*>(d12),
+                static_cast<void*>(d3d));
+      if (d12) d12->Release();  // 9on12 holds its own reference
       if (d3d) {
         hooks::HookDirect3D9(d3d);
         return d3d;
