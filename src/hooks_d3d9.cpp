@@ -4,6 +4,7 @@
 #include "hooks_d3d9.h"
 
 #include <windows.h>
+#include <psapi.h>
 #include <d3d12.h>
 #include <d3d9on12.h>
 #include <dxgi1_4.h>
@@ -142,6 +143,8 @@ void Count(Kind k, D3DPOOL pool) {
   if (static_cast<unsigned>(pool) < 4) g_counts[k][pool].fetch_add(1, std::memory_order_relaxed);
 }
 
+void LogMemory();
+
 void MaybeLogStats() {
   const int interval = config::Get().stats_interval_sec;
   if (interval <= 0) return;
@@ -163,6 +166,34 @@ void MaybeLogStats() {
   }
   log::Info("stats: %.1f fps, frame %llu, created (D=DEFAULT M=MANAGED S=SYSTEMMEM X=SCRATCH):%s ps=%u unique_ps=%zu",
             fps, frames, line.c_str(), g_ps_created.load(), g_seen_shaders.size());
+  LogMemory();
+}
+
+// Process memory, to tell address-space exhaustion (32-bit game) from running out of video memory:
+// free address space and its largest free block, committed private bytes, local video memory vs budget.
+void LogMemory() {
+  MEMORYSTATUSEX ms{};
+  ms.dwLength = sizeof(ms);
+  GlobalMemoryStatusEx(&ms);
+  unsigned long long largest = 0;
+  MEMORY_BASIC_INFORMATION mbi{};
+  for (const char* p = nullptr; VirtualQuery(p, &mbi, sizeof(mbi)) == sizeof(mbi);) {
+    if (mbi.State == MEM_FREE && mbi.RegionSize > largest) largest = mbi.RegionSize;
+    const char* next = static_cast<const char*>(mbi.BaseAddress) + mbi.RegionSize;
+    if (next <= p) break;
+    p = next;
+  }
+  PROCESS_MEMORY_COUNTERS_EX pmc{};
+  pmc.cb = sizeof(pmc);
+  K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof(pmc));
+  constexpr double kMiB = 1024.0 * 1024.0;
+  unsigned long long vram = 0, budget = 0;
+  char vram_text[64] = "n/a";
+  if (output::VideoMemory(&vram, &budget)) {
+    std::snprintf(vram_text, sizeof(vram_text), "%.0f / %.0f MiB", vram / kMiB, budget / kMiB);
+  }
+  log::Info("memory: address space free %.0f of %.0f MiB (largest block %.0f MiB), private %.0f MiB, video %s",
+            ms.ullAvailVirtual / kMiB, ms.ullTotalVirtual / kMiB, largest / kMiB, pmc.PrivateUsage / kMiB, vram_text);
 }
 
 // ---------- one-frame trace (milestone 4 HDR stage) ----------

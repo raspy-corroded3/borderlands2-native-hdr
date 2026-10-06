@@ -69,6 +69,7 @@ struct State {
   int present_errors = 0;
   // automated-test capture
   std::string pending_capture;  // label of the next capture ("" = none)
+  IDXGIAdapter3* adapter = nullptr;  // for VideoMemory(), created on first use
 };
 State g;
 
@@ -242,6 +243,7 @@ void ReleaseAll() {
   SafeRelease(g.alloc[1]);
   SafeRelease(g.fence);
   SafeRelease(g.queue);
+  SafeRelease(g.adapter);
   SafeRelease(g.dev);
   SafeRelease(g.on12);
   if (g.fence_event) {
@@ -627,6 +629,27 @@ HRESULT Present(IDirect3DDevice9* device) {
   }
   ++g.frames;
   return D3D_OK;
+}
+
+bool VideoMemory(unsigned long long* usage, unsigned long long* budget) {
+  if (!g.dev) return false;
+  if (!g.adapter) {
+    using CreateFactory2_t = HRESULT(WINAPI*)(UINT, REFIID, void**);
+    HMODULE dxgi = GetModuleHandleW(L"dxgi.dll");
+    auto create_factory = dxgi ? reinterpret_cast<CreateFactory2_t>(GetProcAddress(dxgi, "CreateDXGIFactory2")) : nullptr;
+    IDXGIFactory4* factory = nullptr;
+    if (!create_factory || FAILED(create_factory(0, __uuidof(IDXGIFactory4), reinterpret_cast<void**>(&factory)))) {
+      return false;
+    }
+    factory->EnumAdapterByLuid(g.dev->GetAdapterLuid(), __uuidof(IDXGIAdapter3), reinterpret_cast<void**>(&g.adapter));
+    factory->Release();
+    if (!g.adapter) return false;
+  }
+  DXGI_QUERY_VIDEO_MEMORY_INFO info{};
+  if (FAILED(g.adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info))) return false;
+  *usage = info.CurrentUsage;
+  *budget = info.Budget;
+  return true;
 }
 
 void RequestCapture(const std::string& label) {
