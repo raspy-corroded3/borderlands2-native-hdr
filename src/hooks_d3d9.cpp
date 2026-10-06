@@ -202,6 +202,14 @@ void LogMemory() {
 std::mutex g_ps_map_mutex;
 std::unordered_map<IDirect3DPixelShader9*, uint32_t> g_ps_crc;  // shader object -> bytecode CRC
 
+// Only frame traces read the map. It holds raw pointers of shaders that may be released later (an
+// address can be reused; the newest entry wins), so it is filled only when a trace is configured.
+void RememberCrc(IDirect3DPixelShader9* ps, uint32_t crc) {
+  if (config::Get().trace_frame_at_sec <= 0) return;
+  std::lock_guard lock(g_ps_map_mutex);
+  g_ps_crc[ps] = crc;  // original CRC, also for swapped shaders, so traces show which pass it is
+}
+
 struct Trace {
   enum class State { kIdle, kArmed, kTracing, kDone } state = State::kIdle;
   long long first_present_qpc = 0;
@@ -628,9 +636,12 @@ HRESULT STDMETHODCALLTYPE CreatePixelShader_Hook(IDirect3DDevice9* self, const D
     const HRESULT hr = orig(self, static_cast<const DWORD*>(rep.bytecode), out);
     if (SUCCEEDED(hr)) {
       log::Info("CreatePixelShader 0x%08X: replaced with '%s' (%zu bytes)", crc, rep.variant, rep.size);
-      if (out && *out) { std::lock_guard lock(g_ps_map_mutex); g_ps_crc[*out] = crc; }
+      if (out && *out) RememberCrc(*out, crc);
       if (out && *out && config::Get().tonemap == config::TonemapVariant::kHdr && crc == 0x54ED86A0u) {
-        g_hdr_tonemap_ps = *out;
+        // Keep a reference: while we hold it, no other shader can be created at this address and be
+        // mistaken for the tonemapper (it would get our c50 parameters).
+        (*out)->AddRef();
+        if (IDirect3DPixelShader9* old = g_hdr_tonemap_ps.exchange(*out)) old->Release();
       }
       return hr;
     }
@@ -638,10 +649,7 @@ HRESULT STDMETHODCALLTYPE CreatePixelShader_Hook(IDirect3DDevice9* self, const D
                rep.variant, static_cast<unsigned long>(hr));
   }
   const HRESULT hr = orig(self, func, out);
-  if (SUCCEEDED(hr) && out && *out) {
-    std::lock_guard lock(g_ps_map_mutex);
-    g_ps_crc[*out] = crc;  // original CRC, also for swapped shaders, so traces show which pass it is
-  }
+  if (SUCCEEDED(hr) && out && *out) RememberCrc(*out, crc);
   return hr;
 }
 
