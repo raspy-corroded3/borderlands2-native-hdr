@@ -31,7 +31,7 @@ jobs:
             if (-not $text.Contains($e)) { throw "missing export $e" }
           }
           Write-Host "OK: x86 DLL, $((Get-Item $dll).Length) bytes"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bl2hdr
           path: |
