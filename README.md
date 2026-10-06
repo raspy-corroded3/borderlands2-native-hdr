@@ -91,6 +91,11 @@ Contributions are welcome — bug reports, test results on other hardware, and p
   code); facts such as offsets, byte patterns or shader CRCs are fine. Keep the DLL 32-bit with no new
   runtime dependencies, and match the existing code style.
 - The items below are good places to start.
+- Security problems: please report them privately — see [SECURITY.md](SECURITY.md). Everyone taking part
+  is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Releases are built by GitHub Actions from a version tag (`.github/workflows/release.yml`), with SHA-256
+checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a download).
 
 ## Known issues / to do
 - Bink videos (loading screens, cutscenes) are shown at UI brightness and are not HDR-processed.

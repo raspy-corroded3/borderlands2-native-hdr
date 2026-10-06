@@ -1,0 +1,54 @@
+name: release
+
+# Push a version tag (e.g. v1.0.0-beta.1) to build the DLL on GitHub's runners, attest where it came from,
+# and publish a release with the files and their SHA-256 checksums.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write      # create the release
+  id-token: write      # build attestation (Sigstore)
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (Release, x86)
+        shell: cmd
+        run: call build.cmd Release
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "release"
+          New-Item -ItemType Directory $out | Out-Null
+          Copy-Item build/Release/d3d9.dll, dist/bl2hdr.ini, README.md, LICENSE, THIRD_PARTY_NOTICES.md $out
+          Compress-Archive -Path "$out/*" -DestinationPath "bl2hdr-${{ github.ref_name }}.zip"
+          Get-FileHash "$out/d3d9.dll", "$out/bl2hdr.ini", "bl2hdr-${{ github.ref_name }}.zip" -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
+            Set-Content -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            release/d3d9.dll
+            bl2hdr-${{ github.ref_name }}.zip
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          Built by GitHub Actions from tag ${{ github.ref_name }} (commit ${{ github.sha }}).
+
+          Install: copy ``d3d9.dll`` and ``bl2hdr.ini`` into ``Borderlands 2\Binaries\Win32``. See README.md.
+          Verify: ``gh attestation verify d3d9.dll --repo ${{ github.repository }}`` and SHA256SUMS.txt.
+          "@
+          $ghArgs = @("release", "create", "${{ github.ref_name }}", "release/d3d9.dll", "release/bl2hdr.ini",
+                      "bl2hdr-${{ github.ref_name }}.zip", "SHA256SUMS.txt",
+                      "--title", "bl2hdr ${{ github.ref_name }}", "--notes", $notes)
+          if ("${{ github.ref_name }}" -match "-") { $ghArgs += "--prerelease" }  # e.g. v1.0.0-beta.1
+          gh @ghArgs

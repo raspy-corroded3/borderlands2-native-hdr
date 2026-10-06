@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only token: building and uploading an artifact needs nothing else.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest

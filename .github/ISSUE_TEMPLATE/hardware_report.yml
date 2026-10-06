@@ -1,0 +1,46 @@
+name: Hardware test report
+description: Tell us how bl2hdr works on your system (also when everything works)
+labels: [hardware-report]
+body:
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Works well
+        - Works with problems
+        - Does not work
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: bl2hdr version
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver version
+    validations:
+      required: true
+  - type: input
+    id: display
+    attributes:
+      label: Display (model, HDR rating) and measured peak (TestPattern)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: FPS compared to without bl2hdr, anything that looked off, settings you use.
+  - type: textarea
+    id: log
+    attributes:
+      label: bl2hdr.log (optional)
+      render: text

@@ -1,0 +1,55 @@
+name: Bug report
+description: Something does not work or looks wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you saw. Screenshots help.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: bl2hdr version
+      description: First line of bl2hdr.log, e.g. "bl2hdr 1.0.0-beta.1 ..."
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver version
+      placeholder: e.g. NVIDIA RTX 3070 Ti, 32.0.16.1742
+    validations:
+      required: true
+  - type: input
+    id: display
+    attributes:
+      label: Display, and is Windows HDR on?
+      placeholder: e.g. Samsung Odyssey G6 (HDR600), Windows HDR on
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game version and DLC
+      placeholder: e.g. Steam 1.0.257.2863302, all DLC
+  - type: textarea
+    id: settings
+    attributes:
+      label: Changed settings
+      description: Any keys you changed in bl2hdr.ini (or "defaults").
+  - type: textarea
+    id: log
+    attributes:
+      label: bl2hdr.log
+      description: From Borderlands 2\Binaries\Win32 - copy it right after the problem (it is rewritten every launch).
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: No other mod replaces d3d9.dll (DXVK, ReShade DX9 mode)
+          required: true
