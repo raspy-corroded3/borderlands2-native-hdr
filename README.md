@@ -1,5 +1,7 @@
 # Borderlands 2 — Native HDR (bl2hdr)
 
+[![VirusTotal](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fraspy-corroded3%2Fborderlands2-native-hdr%2Fbadges%2Fvirustotal-badge.json)](https://github.com/raspy-corroded3/borderlands2-native-hdr/blob/badges/VIRUSTOTAL.md)
+
 A drop-in `d3d9.dll` that adds **real HDR output** to Borderlands 2 (PC, Steam), with an
 **HDR settings page in the game's own Video menu**. No ReShade, no mod manager.
 
@@ -104,7 +106,9 @@ Contributions are welcome — bug reports, test results on other hardware, and p
   is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Releases are built by GitHub Actions from a version tag (`.github/workflows/release.yml`), with SHA-256
-checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a download).
+checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a download). The published files
+are then scanned on VirusTotal automatically (`.github/workflows/virustotal.yml`): the result is in each
+release's notes and in the badge at the top of this page.
 
 ## Known issues
 - **"Ran out of video memory" after long sessions.** BL2 is a 32-bit game and 9on12 uses about 300 MiB more

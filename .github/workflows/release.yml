@@ -1,7 +1,7 @@
 name: release
 
 # Push a version tag (e.g. v1.0.0-beta.1) to build the DLL on GitHub's runners, attest where it came from,
-# and publish a release with the files and their SHA-256 checksums.
+# and publish a release with the files and their SHA-256 checksums; then scan them on VirusTotal.
 on:
   push:
     tags: ["v*"]
@@ -52,3 +52,11 @@ jobs:
                       "--title", "bl2hdr ${{ github.ref_name }}", "--notes", $notes)
           if ("${{ github.ref_name }}" -match "-") { $ghArgs += "--prerelease" }  # e.g. v1.0.0-beta.1
           gh @ghArgs
+
+  # VirusTotal scan of the published files: result in the release notes and the README badge.
+  virustotal:
+    needs: release
+    uses: ./.github/workflows/virustotal.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit

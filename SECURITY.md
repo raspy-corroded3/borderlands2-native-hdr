@@ -25,4 +25,6 @@ by its CI (requires the GitHub CLI):
 ```
 gh attestation verify d3d9.dll --repo raspy-corroded3/borderlands2-native-hdr
 ```
+Each release is also scanned on VirusTotal automatically; its notes link to the live reports, and the
+README badge shows the latest result ([VIRUSTOTAL.md](https://github.com/raspy-corroded3/borderlands2-native-hdr/blob/badges/VIRUSTOTAL.md)).
 Only download the DLL from this repository's Releases page.

@@ -1,0 +1,153 @@
+name: virustotal
+
+# Scans a release's d3d9.dll and zip on VirusTotal and publishes the result:
+#   - a "VirusTotal" section in that release's notes (with links to the live reports)
+#   - badge data (virustotal-badge.json, shields.io endpoint format) and VIRUSTOTAL.md on the `badges`
+#     branch, shown by the README badge.
+# Called by release.yml after each release; can also be run by hand for any release tag.
+# A detection never fails the release: it is shown in the notes and the badge so it can be checked and,
+# if it is a false positive, reported to that vendor.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to scan, e.g. v1.0.1-beta.1"
+        type: string
+        required: true
+
+permissions:
+  contents: write      # edit the release notes, push the badges branch
+
+concurrency: virustotal  # one update of the badges branch at a time
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      VT_API_KEY: ${{ secrets.VT_API_KEY }}
+    steps:
+      - name: Check inputs
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9A-Za-z.-]+$ ]]; then echo "::error::invalid tag '$TAG'"; exit 1; fi
+          if [ -z "$VT_API_KEY" ]; then
+            echo "::warning::VT_API_KEY secret is not set - skipping the VirusTotal scan"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download the release files
+        if: env.SKIP != '1'
+        run: gh release download "$TAG" -R "$REPO" -p d3d9.dll -p "bl2hdr-$TAG.zip" -D files
+
+      - name: Scan on VirusTotal
+        if: env.SKIP != '1'
+        run: |
+          set -euo pipefail
+          api=https://www.virustotal.com/api/v3
+          vt() { curl -sS --retry 3 --retry-delay 20 -H "x-apikey: $VT_API_KEY" "$@"; }
+          echo '[]' > results.json
+          for f in files/d3d9.dll "files/bl2hdr-$TAG.zip"; do
+            name=$(basename "$f")
+            sha=$(sha256sum "$f" | cut -d' ' -f1)
+            code=$(vt -o report.json -w '%{http_code}' "$api/files/$sha")
+            if [ "$code" != 200 ] || [ "$(jq '.data.attributes.last_analysis_stats // {} | length' report.json)" = 0 ]; then
+              echo "$name: uploading ($sha)"
+              id=$(vt -F "file=@$f" "$api/files" | jq -r '.data.id')
+              # Free API: 4 requests/minute. A scan usually takes 1-5 minutes.
+              for i in $(seq 1 30); do
+                sleep 30
+                status=$(vt "$api/analyses/$id" | jq -r '.data.attributes.status')
+                echo "$name: $status"
+                [ "$status" = completed ] && break
+              done
+              sleep 15
+              vt -o report.json "$api/files/$sha"
+            else
+              echo "$name: already analysed by VirusTotal"
+            fi
+            jq --arg name "$name" --arg sha "$sha" '
+              .data.attributes as $a | $a.last_analysis_stats as $s |
+              {name: $name, sha256: $sha,
+               detected: (($s.malicious // 0) + ($s.suspicious // 0)),
+               total: (($s.malicious // 0) + ($s.suspicious // 0) + ($s.undetected // 0) + ($s.harmless // 0)),
+               date: ($a.last_analysis_date // 0 | todate),
+               engines: [($a.last_analysis_results // {}) | to_entries[]
+                         | select(.value.category == "malicious" or .value.category == "suspicious")
+                         | "\(.key): \(.value.result)"]}' report.json > one.json
+            jq -s '.[0] + [.[1]]' results.json one.json > tmp.json && mv tmp.json results.json
+            sleep 15
+          done
+          jq . results.json
+          if [ "$(jq '[.[].total] | min' results.json)" = 0 ]; then
+            echo "::error::VirusTotal returned no engine results"; exit 1
+          fi
+
+      - name: Add the result to the release notes
+        if: env.SKIP != '1'
+        run: |
+          set -euo pipefail
+          {
+            echo '<!-- virustotal -->'
+            echo '### VirusTotal'
+            echo
+            echo '| File | Detections | Report |'
+            echo '|---|---|---|'
+            jq -r '.[] | "| `\(.name)` | \(.detected) / \(.total) engines | [live report](https://www.virustotal.com/gui/file/\(.sha256)) |"' results.json
+            echo
+            echo "Scanned automatically when the release was published ($(jq -r '.[0].date' results.json | cut -c1-10)). Detections can change over time: the live reports show the current result."
+            if [ "$(jq '[.[].detected] | add' results.json)" != 0 ]; then
+              echo
+              echo 'Flagged by:'
+              jq -r '.[] | .name as $n | .engines[] | "- `\($n)` - \(.)"' results.json
+              echo
+              echo 'bl2hdr is a proxy DLL that hooks game functions, which some heuristic engines flag. The DLL is built by GitHub Actions from this repository with a verifiable build attestation (see above).'
+            fi
+            echo '<!-- /virustotal -->'
+          } > section.md
+          gh release view "$TAG" -R "$REPO" --json body --jq .body > notes.md
+          # Replace an earlier VirusTotal section (re-runs) or append a new one.
+          sed -i '/<!-- virustotal -->/,/<!-- \/virustotal -->/d' notes.md
+          printf '\n' >> notes.md
+          cat section.md >> notes.md
+          gh release edit "$TAG" -R "$REPO" --notes-file notes.md > /dev/null
+          if [ "$(jq '[.[].detected] | add' results.json)" != 0 ]; then
+            echo "::warning::VirusTotal detections for $TAG - see the release notes"
+          fi
+
+      - name: Update the badge (badges branch)
+        if: env.SKIP != '1'
+        run: |
+          set -euo pipefail
+          url="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          if git clone -q --depth 1 --branch badges "$url" badges 2>/dev/null; then :; else
+            git init -q -b badges badges && git -C badges remote add origin "$url"
+          fi
+          dll_det=$(jq '.[] | select(.name == "d3d9.dll") | .detected' results.json)
+          dll_tot=$(jq '.[] | select(.name == "d3d9.dll") | .total' results.json)
+          all_det=$(jq '[.[].detected] | add' results.json)
+          color=brightgreen; [ "$all_det" -gt 0 ] && color=orange; [ "$all_det" -gt 3 ] && color=red
+          jq -n --arg m "$dll_det/$dll_tot · $TAG" --arg c "$color" \
+            '{schemaVersion: 1, label: "VirusTotal", message: $m, color: $c}' > badges/virustotal-badge.json
+          {
+            echo "# VirusTotal scan of the latest release ($TAG)"
+            echo
+            echo "| File | Detections | SHA-256 | Report |"
+            echo "|---|---|---|---|"
+            jq -r '.[] | "| `\(.name)` | \(.detected) / \(.total) | `\(.sha256)` | [live report](https://www.virustotal.com/gui/file/\(.sha256)) |"' results.json
+            echo
+            echo "Scanned automatically by the [virustotal workflow](https://github.com/${REPO}/blob/main/.github/workflows/virustotal.yml) on $(jq -r '.[0].date' results.json | cut -c1-10)."
+            echo "Detections can change over time: the live reports show the current result. Release: https://github.com/${REPO}/releases/tag/${TAG}"
+          } > badges/VIRUSTOTAL.md
+          cd badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add virustotal-badge.json VIRUSTOTAL.md
+          git commit -q -m "VirusTotal result for $TAG" || { echo "badge unchanged"; exit 0; }
+          git push -q origin badges
