@@ -1,6 +1,6 @@
 #pragma once
-// Milestone 5: "HDR: Off / On" in the game's Video options, plus game-thread console commands for
-// automated tests. Built on ue3.h (ProcessEvent / CallFunction hooks).
+// "HDR" in the game's Video options (a settings page with live brightness sliders, or an Off/On row),
+// plus game-thread console commands for automated tests. Built on ue3.h (ProcessEvent / CallFunction hooks).
 namespace bl2hdr::menu {
 // Called once on the first Present (engine initialised): resolves the script functions and enables
 // the hooks. Requires ue3::Init() to have succeeded (done in DllMain).

@@ -1,13 +1,14 @@
 # Borderlands 2 — Native HDR (bl2hdr)
 
 A drop-in `d3d9.dll` that adds **real HDR output** to Borderlands 2 (PC, Steam), with an
-**"HDR: Off / On" option in the game's own Video menu**. No ReShade, no mod manager.
+**HDR settings page in the game's own Video menu**. No ReShade, no mod manager.
 
 - The game's tonemapper is replaced by an HDR version that keeps the original look up to SDR white and
   lets highlights (sun, sky, fire, muzzle flashes) go brighter, up to your display's peak.
 - Output is native Windows HDR (scRGB, FP16 swapchain) — Windows Auto HDR is not involved.
-- Separate brightness for the 3D scene and for the HUD/menus.
-- Live on/off toggle in **Options → Video → HDR**, remembered between sessions.
+- Separate brightness for the 3D scene, the HUD/menus and cutscenes.
+- **Options → Video → HDR**: HDR on/off and sliders for every brightness, the peak and the highlight
+  strength. Changes apply live and are saved to `bl2hdr.ini`.
 - A built-in peak-brightness test pattern to match your display.
 
 > **Status: beta (1.0.0-beta.2).** Tested on one system (Windows 11, NVIDIA RTX 3070 Ti, Samsung
@@ -24,7 +25,7 @@ A drop-in `d3d9.dll` that adds **real HDR output** to Borderlands 2 (PC, Steam),
 1. Download `d3d9.dll` and `bl2hdr.ini` from the [Releases](../../releases) page (or build them, below).
 2. Copy both into `Borderlands 2\Binaries\Win32\` (next to `Borderlands2.exe`).
    If a `d3d9.dll` from another mod is already there, move it away first.
-3. Start the game. In **Options → Video**, the last row is **HDR: On/Off**.
+3. Start the game. In **Options → Video**, the last row, **HDR**, opens the HDR settings.
 
 To uninstall, delete `d3d9.dll` and `bl2hdr.ini` (and `bl2hdr.log`) from that folder.
 
@@ -43,7 +44,7 @@ HDR output). Alt-tab works instantly.
 | `[hdr] TestPattern` | 0 | 1 = show the peak-brightness test pattern instead of the game |
 | `[hdr] DebugHighlights` | 0 | 1 = paint everything brighter than SDR white magenta |
 | `[display] ForceBorderless` | 1 | Turn exclusive fullscreen into a borderless window |
-| `[menu] HdrOption` | 1 | Add the HDR row to the Video menu |
+| `[menu] HdrOption` | 1 | Add the HDR settings row to the Video menu |
 | `[menu] GameHooks` | 1 | Master switch for the game-script hooks (the menu option needs them) |
 | `[d3d9] OnDeviceRemoved` | message | If the graphics driver crashes or resets: `message` = explain and close the game, `exit` = close without a message, `continue` = leave it (the game hangs) |
 
@@ -63,7 +64,8 @@ The game runs on Direct3D 9. bl2hdr loads as the game's `d3d9.dll` and:
 3. replaces the final tonemap shader (identified by the CRC32 of its bytecode) with an HDR version
    that keeps the original curve and colour grade below SDR white and extends the highlights;
 4. presents the frame through **its own** DXGI FP16 scRGB swapchain with a small D3D12 encode pass;
-5. hooks the game's UnrealScript engine (ProcessEvent / CallFunction) to add the Video-menu option.
+5. hooks the game's UnrealScript engine (ProcessEvent / CallFunction) to add the HDR settings page to the
+   Video menu (a page object of the game's own options class, created with StaticConstructObject).
 
 Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

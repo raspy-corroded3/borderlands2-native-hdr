@@ -389,7 +389,8 @@ HRESULT STDMETHODCALLTYPE SetPixelShader_Hook(IDirect3DDevice9* self, IDirect3DP
     const bool hdr_out = backbuffer::Surface() != nullptr;
     const float strength = hdr_out && menu::HdrEnabled() ? cfg.hdr_strength : 0.0f;  // live Off = 0 (menu option)
     const float game_to_ui = hdr_out ? cfg.paper_white_nits / cfg.ui_white_nits : 1.0f;
-    const float params[4] = {cfg.peak_nits / cfg.paper_white_nits, strength, game_to_ui, 0.0f};
+    // Peak below game white (possible while moving the menu sliders) would invert the highlight curve.
+    const float params[4] = {std::max(cfg.peak_nits / cfg.paper_white_nits, 1.0f), strength, game_to_ui, 0.0f};
     self->SetPixelShaderConstantF(50, params, 1);
   } else if (ps && ps == g_video_ps.load(std::memory_order_relaxed)) {
     const auto& cfg = config::Get();

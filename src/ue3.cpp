@@ -76,6 +76,11 @@ std::once_flag g_init_once;
 
 using ProcessEvent_t = void(__fastcall*)(UObject*, void*, UFunction*, void*, void*);
 using CallFunction_t = void(__fastcall*)(UObject*, void*, FFrame*, void*, UFunction*);
+// UObject::StaticConstructObject(Class, Outer, FName (index, number), EObjectFlags (2 dwords), Template,
+// Error, SubobjectRoot, InstanceGraph) - __cdecl, 10 dwords (verified at call sites: add esp, 0x28).
+using StaticConstructObject_t = UObject*(__cdecl*)(UObject*, UObject*, int32_t, int32_t, uint32_t, uint32_t, UObject*,
+                                                   void*, UObject*, void*);
+StaticConstructObject_t g_construct = nullptr;
 ProcessEvent_t g_process_event = nullptr;  // trampoline to the original
 CallFunction_t g_call_function = nullptr;
 std::atomic<ProcessEventHook> g_pe_hook{nullptr};
@@ -217,6 +222,11 @@ bool Init() {
     log::Info("ue3: CallFunction pattern hits=%d -> first %p", hits, static_cast<void*>(cf));
     // Also require it to sit just before ProcessEvent (0x4F0 bytes in the verified exe).
     if (hits != 2 || !pe || cf >= pe || pe - cf > 0x1000) cf = nullptr;
+    // Optional (only the HDR settings page needs it): StaticConstructObject, 0x004CA5F0 in the verified exe.
+    uint8_t* sco = Scan("55 8B EC 6A FF 68 ?? ?? ?? ?? 64 A1 00 00 00 00 50 83 EC 10 53 56 57 A1 ?? ?? ?? ?? 33 C5 50 "
+                        "8D 45 F4 64 A3 00 00 00 00 8B 7D 08 8A 87 CC 01 00 00", &hits);
+    log::Info("ue3: StaticConstructObject pattern hits=%d -> %p", hits, static_cast<void*>(sco));
+    if (sco && hits == 1) g_construct = reinterpret_cast<StaticConstructObject_t>(sco);
     // GMalloc itself is created later by the engine: only its slot must be known now (read at use time).
     if (!g_objects || !g_names || !g_malloc_slot || !pe || !cf) {
       log::Error("ue3: initialisation incomplete - game hooks disabled");
@@ -375,6 +385,19 @@ bool Params::SetObject(const char* name, UObject* v) {
   std::memcpy(&buf_[p->offset], &v, sizeof(v));
   return true;
 }
+bool Params::SetFloat(const char* name, float v) {
+  const Prop* p = Find(name, sizeof(v));
+  if (!p || p->cls != "FloatProperty") return false;
+  std::memcpy(&buf_[p->offset], &v, sizeof(v));
+  return true;
+}
+bool Params::SetInterface(const char* name, UObject* v) {
+  const Prop* p = Find(name, 2 * sizeof(v));
+  if (!p || p->cls != "InterfaceProperty") return false;
+  UObject* both[2] = {v, v};
+  std::memcpy(&buf_[p->offset], both, sizeof(both));
+  return true;
+}
 bool Params::SetString(const char* name, const std::wstring& v) {
   const Prop* p = Find(name, sizeof(FStringRaw));
   if (!p) return false;
@@ -455,10 +478,10 @@ std::string Params::Describe() const {
   return s + "size=" + std::to_string(buf_.size());
 }
 
-void Call(UObject* obj, UFunction* fn, void* params) {
+void Call(UObject* obj, UFunction* fn, void* params, bool hooks) {
   if (!g_process_event || !obj || !fn) return;
   const bool was = t_in_hook;
-  t_in_hook = true;  // our own calls do not re-enter our hooks
+  t_in_hook = !hooks;  // our own calls do not re-enter our hooks unless asked
   g_process_event(obj, nullptr, fn, params, nullptr);
   t_in_hook = was;
 }
@@ -466,17 +489,67 @@ void Call(UObject* obj, UFunction* fn, void* params) {
 void SetProcessEventHook(ProcessEventHook hook) { g_pe_hook = hook; }
 void SetCallFunctionHook(CallFunctionHook hook) { g_cf_hook = hook; }
 
-bool ReadIntArray(UObject* obj, const char* prop_name, std::vector<int32_t>* out) {
+namespace {
+// The property `prop_name` of obj's class (or a superclass), or nullptr.
+UObject* FindMember(UObject* obj, const char* prop_name) {
   for (UObject* cls = ClassOf(obj); cls; cls = At<UObject*>(cls, 0x48)) {  // UStruct::SuperField
     for (UObject* child = At<UObject*>(cls, 0x4C); child; child = At<UObject*>(child, 0x3C)) {
-      if (Name(child) != prop_name) continue;
-      const auto* arr = reinterpret_cast<const TArrayRaw*>(reinterpret_cast<const uint8_t*>(obj) + At<int32_t>(child, 0x60));
-      if (arr->count < 0 || arr->count > arr->max || (arr->count > 0 && !arr->data)) return false;
-      out->assign(static_cast<const int32_t*>(arr->data), static_cast<const int32_t*>(arr->data) + arr->count);
-      return true;
+      if (Name(child) == prop_name) return child;
     }
   }
-  return false;
+  return nullptr;
+}
+}  // namespace
+
+bool ReadIntArray(UObject* obj, const char* prop_name, std::vector<int32_t>* out) {
+  UObject* prop = obj ? FindMember(obj, prop_name) : nullptr;
+  if (!prop) return false;
+  const auto* arr = reinterpret_cast<const TArrayRaw*>(reinterpret_cast<const uint8_t*>(obj) + At<int32_t>(prop, 0x60));
+  if (arr->count < 0 || arr->count > arr->max || (arr->count > 0 && !arr->data)) return false;
+  out->assign(static_cast<const int32_t*>(arr->data), static_cast<const int32_t*>(arr->data) + arr->count);
+  return true;
+}
+
+bool GetObjectMember(UObject* obj, const char* prop_name, UObject** out) {
+  UObject* prop = obj ? FindMember(obj, prop_name) : nullptr;
+  if (!prop || ClassName(prop) != "ObjectProperty") return false;
+  *out = At<UObject*>(obj, At<int32_t>(prop, 0x60));
+  return true;
+}
+
+bool SetObjectMember(UObject* obj, const char* prop_name, UObject* value) {
+  UObject* prop = obj ? FindMember(obj, prop_name) : nullptr;
+  if (!prop || ClassName(prop) != "ObjectProperty") return false;
+  *reinterpret_cast<UObject**>(reinterpret_cast<uint8_t*>(obj) + At<int32_t>(prop, 0x60)) = value;
+  return true;
+}
+
+bool SetStringMember(UObject* obj, const char* prop_name, const std::wstring& value) {
+  UObject* prop = obj ? FindMember(obj, prop_name) : nullptr;
+  if (!prop || ClassName(prop) != "StrProperty") return false;
+  auto* s = reinterpret_cast<FStringRaw*>(reinterpret_cast<uint8_t*>(obj) + At<int32_t>(prop, 0x60));
+  const auto count = static_cast<int32_t>(value.size() + 1);
+  auto* data = static_cast<wchar_t*>(UMalloc(static_cast<uint32_t>(count * sizeof(wchar_t))));
+  if (!data) return false;
+  std::memcpy(data, value.c_str(), count * sizeof(wchar_t));
+  UFree(s->data);
+  s->data = data;
+  s->count = s->max = count;
+  return true;
+}
+
+bool CanConstruct() { return g_ready && g_construct; }
+
+UObject* Construct(UObject* cls, UObject* outer) {
+  if (!CanConstruct() || !cls || !outer || ClassName(cls) != "Class") return nullptr;
+  if (At<uint32_t>(cls, 0xD0) & 1u) {  // UClass::ClassFlags, CLASS_Abstract
+    log::Error("ue3: Construct: class '%s' is abstract", Name(cls).c_str());
+    return nullptr;
+  }
+  // Error device null: only used for failures (abstract class, wrong outer), excluded above.
+  UObject* obj = g_construct(cls, outer, 0, 0, 0, 0, nullptr, nullptr, nullptr, nullptr);
+  log::Info("ue3: constructed %s '%s' in '%s'", Name(cls).c_str(), PathName(obj).c_str(), PathName(outer).c_str());
+  return obj;
 }
 
 }  // namespace bl2hdr::ue3

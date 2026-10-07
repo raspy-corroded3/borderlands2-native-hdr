@@ -50,6 +50,9 @@ class Params {
   bool SetInt(const char* name, int32_t v);
   bool SetBool(const char* name, bool v);
   bool SetObject(const char* name, UObject* v);
+  bool SetFloat(const char* name, float v);
+  // Script interface (FScriptInterface: object, interface pointer = the object for non-native interfaces).
+  bool SetInterface(const char* name, UObject* v);
   bool SetString(const char* name, const std::wstring& v);
   bool SetStringArray(const char* name, const std::vector<std::wstring>& v);
   int32_t GetInt(const char* name) const;
@@ -68,8 +71,9 @@ class Params {
   std::vector<void*> owned_;  // GMalloc allocations to free
 };
 
-// Call a UnrealScript/native function on obj through the original ProcessEvent.
-void Call(UObject* obj, UFunction* fn, void* params);
+// Call a UnrealScript/native function on obj through the original ProcessEvent. Our hooks do not see
+// what this call does, unless `hooks` (e.g. PushDataProvider, whose Populate call we must see).
+void Call(UObject* obj, UFunction* fn, void* params, bool hooks = false);
 
 // Hooks. Return true from a pre-hook to block the original call.
 using ProcessEventHook = bool (*)(UObject* obj, UFunction* fn, void* params, bool post);
@@ -79,4 +83,14 @@ void SetCallFunctionHook(CallFunctionHook hook);
 
 // Read an int array member (TArray<int>) of an object by property name; returns false if not found.
 bool ReadIntArray(UObject* obj, const char* prop_name, std::vector<int32_t>* out);
+// Object-reference member of an object by property name (also in superclasses); false if not found.
+bool GetObjectMember(UObject* obj, const char* prop_name, UObject** out);
+bool SetObjectMember(UObject* obj, const char* prop_name, UObject* value);
+// String member (FString); the new text is allocated with the engine allocator and owned by the object.
+bool SetStringMember(UObject* obj, const char* prop_name, const std::wstring& value);
+
+// New object of class `cls` inside `outer` (UObject::StaticConstructObject, auto-generated name, no
+// flags). nullptr when the function was not found in this exe or the class is abstract. Game thread only.
+UObject* Construct(UObject* cls, UObject* outer);
+bool CanConstruct();
 }  // namespace bl2hdr::ue3
