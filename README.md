@@ -1,9 +1,11 @@
 # Borderlands 2 — Native HDR (bl2hdr)
 
 [![VirusTotal](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fraspy-corroded3%2Fborderlands2-native-hdr%2Fbadges%2Fvirustotal-badge.json)](https://github.com/raspy-corroded3/borderlands2-native-hdr/blob/badges/VIRUSTOTAL.md)
+[![Nexus Mods](https://img.shields.io/badge/Nexus%20Mods-bl2hdr-orange)](https://www.nexusmods.com/borderlands2/mods/685)
 
 A drop-in `d3d9.dll` that adds **real HDR output** to Borderlands 2 (PC, Steam), with an
-**HDR settings page in the game's own Video menu**. No ReShade, no mod manager.
+**HDR settings page in the game's own Video menu**. No ReShade, and no mod manager needed.
+Download from the [Releases](../../releases) page or from [Nexus Mods](https://www.nexusmods.com/borderlands2/mods/685).
 
 - The game's tonemapper is replaced by an HDR version that keeps the original look up to SDR white and
   lets highlights (sun, sky, fire, muzzle flashes) go brighter, up to your display's peak.
@@ -29,7 +31,8 @@ A drop-in `d3d9.dll` that adds **real HDR output** to Borderlands 2 (PC, Steam),
 - Not compatible with DXVK or ReShade's DirectX 9 mode at the same time (both also replace `d3d9.dll`).
 
 ## Install
-1. Download `d3d9.dll` and `bl2hdr.ini` from the [Releases](../../releases) page (or build them, below).
+1. Download `d3d9.dll` and `bl2hdr.ini` from the [Releases](../../releases) page or
+   [Nexus Mods](https://www.nexusmods.com/borderlands2/mods/685) (or build them, below).
 2. Copy both into `Borderlands 2\Binaries\Win32\` (next to `Borderlands2.exe`).
    If a `d3d9.dll` from another mod is already there, move it away first.
 3. Start the game. In **Options → Video**, the **HDR** row (below Window Mode) opens the HDR settings.
@@ -112,7 +115,7 @@ Releases are built by GitHub Actions from a version tag (`.github/workflows/rele
 checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a download). The published files
 are then scanned on VirusTotal automatically (`.github/workflows/virustotal.yml`): the result is in each
 release's notes and in the badge at the top of this page. The same release also updates the
-[Nexus Mods](https://www.nexusmods.com/) page (`.github/workflows/nexus.yml`, Nexus Mods Upload API): new
+[Nexus Mods](https://www.nexusmods.com/borderlands2/mods/685) page (`.github/workflows/nexus.yml`, Nexus Mods Upload API): new
 versions of both zips, with a changelog made from the release notes. Write the notes in
 `docs/release-notes/<tag>.md` and commit them before pushing the tag; the release uses them as its notes.
 
