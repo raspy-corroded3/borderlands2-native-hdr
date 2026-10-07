@@ -133,10 +133,10 @@ release's notes and in the badge at the top of this page.
   - **Linux via Proton/Wine** (including the Steam Deck): the game-side parts (tonemap, cutscene fix, HDR
     menu) work as they are, but the HDR output needs a new path through DXVK and Vulkan, because Wine has no
     D3D9on12. HDR on Linux also needs an HDR-capable desktop (e.g. gamescope or KDE Plasma on Wayland).
-  - **macOS (Apple Silicon)**: the Windows version of Borderlands 2 runs through Wine-based compatibility
-    layers (reported working on an M2 MacBook Air with macOS 27). bl2hdr's HDR output depends on the layer
-    passing HDR through to macOS, which isn't possible today; at best the menu and tonemap would work with
-    SDR output.
+  - **macOS**: Steam installs Aspyr's native Mac version (64-bit; runs on Apple Silicon through Rosetta 2,
+    reported working on an M2 MacBook Air with macOS 27). It is a different program with its own renderer,
+    so a `d3d9.dll` cannot apply: macOS support would be a separate implementation (a library loaded into
+    the game, hooks on its renderer, the UE3 hooks redone for the Mac binary, HDR output through macOS EDR).
 - Lighting and reflections in HDR (ideas, to explore):
   - HDR intensity for dynamic lights: adjust the game's separate per-light passes (point, spot, directional).
     Expected cost: negligible.
