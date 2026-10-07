@@ -101,7 +101,6 @@ checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a do
 ## Known issues / to do
 - Bink videos (cutscenes, trailers) stay SDR: they look exactly like the original game, with white at
   `UIWhiteNits`.
-- Frame captures (developer feature) can fail right after a resolution change.
 - If the graphics driver crashes or resets (TDR) while playing, 9on12 cannot recover the GPU device, so
   bl2hdr shows a message and closes the game instead of leaving it frozen. Progress since the last save
   point is lost. Plain D3D9 (`[d3d9] Mode=native`, no HDR) does not have this limit.

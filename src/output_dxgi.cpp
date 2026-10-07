@@ -83,6 +83,7 @@ State g;
 struct Capture {
   ID3D12Resource* readback = nullptr;
   D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+  UINT64 bytes = 0;  // readback buffer size: the last row is not padded to RowPitch
   UINT width = 0, height = 0;
   DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
   std::string label;
@@ -116,6 +117,7 @@ bool RecordCapture(ID3D12Resource* src, Capture* cap) {
   const D3D12_RESOURCE_DESC desc = src->GetDesc();
   UINT64 total = 0;
   g.dev->GetCopyableFootprints(&desc, 0, 1, 0, &cap->footprint, nullptr, nullptr, &total);
+  cap->bytes = total;
   D3D12_HEAP_PROPERTIES hp{};
   hp.Type = D3D12_HEAP_TYPE_READBACK;
   D3D12_RESOURCE_DESC bd{};
@@ -161,7 +163,9 @@ bool RecordCapture(ID3D12Resource* src, Capture* cap) {
 void FinishCapture(Capture* cap) {
   const auto& cfg = config::Get();
   uint8_t* data = nullptr;
-  const D3D12_RANGE read{0, static_cast<SIZE_T>(cap->footprint.Footprint.RowPitch) * cap->height};
+  // Not RowPitch * height: when a row is padded (e.g. 2416 FP16 pixels -> pitch 19456) that runs past the
+  // buffer and Map fails with E_INVALIDARG.
+  const D3D12_RANGE read{0, static_cast<SIZE_T>(cap->bytes)};
   const HRESULT map_hr = cap->readback->Map(0, &read, reinterpret_cast<void**>(&data));
   if (FAILED(map_hr) || !data) {
     log::Error("capture: Map failed hr=0x%08lX (%ux%u, row pitch %u, device removed reason 0x%08lX)",
