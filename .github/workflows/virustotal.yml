@@ -56,22 +56,25 @@ jobs:
           for f in files/d3d9.dll "files/bl2hdr-$TAG.zip"; do
             name=$(basename "$f")
             sha=$(sha256sum "$f" | cut -d' ' -f1)
+            # Always a fresh analysis: a known file is re-analysed, so a re-run shows today's result (e.g. after
+            # a vendor fixed a false positive).
             code=$(vt -o report.json -w '%{http_code}' "$api/files/$sha")
-            if [ "$code" != 200 ] || [ "$(jq '.data.attributes.last_analysis_stats // {} | length' report.json)" = 0 ]; then
+            if [ "$code" = 200 ]; then
+              echo "$name: known to VirusTotal - requesting a fresh analysis ($sha)"
+              id=$(vt -X POST "$api/files/$sha/analyse" | jq -r '.data.id')
+            else
               echo "$name: uploading ($sha)"
               id=$(vt -F "file=@$f" "$api/files" | jq -r '.data.id')
-              # Free API: 4 requests/minute. A scan usually takes 1-5 minutes.
-              for i in $(seq 1 30); do
-                sleep 30
-                status=$(vt "$api/analyses/$id" | jq -r '.data.attributes.status')
-                echo "$name: $status"
-                [ "$status" = completed ] && break
-              done
-              sleep 15
-              vt -o report.json "$api/files/$sha"
-            else
-              echo "$name: already analysed by VirusTotal"
             fi
+            # Free API: 4 requests/minute. An analysis usually takes 1-5 minutes.
+            for i in $(seq 1 30); do
+              sleep 30
+              status=$(vt "$api/analyses/$id" | jq -r '.data.attributes.status')
+              echo "$name: $status"
+              [ "$status" = completed ] && break
+            done
+            sleep 15
+            vt -o report.json "$api/files/$sha"
             jq --arg name "$name" --arg sha "$sha" '
               .data.attributes as $a | $a.last_analysis_stats as $s |
               {name: $name, sha256: $sha,
@@ -101,7 +104,7 @@ jobs:
             echo '|---|---|---|'
             jq -r '.[] | "| `\(.name)` | \(.detected) / \(.total) engines | [live report](https://www.virustotal.com/gui/file/\(.sha256)) |"' results.json
             echo
-            echo "Scanned automatically when the release was published ($(jq -r '.[0].date' results.json | cut -c1-10)). Detections can change over time: the live reports show the current result."
+            echo "Scanned automatically by the virustotal workflow on $(jq -r '.[0].date' results.json | cut -c1-10). Detections can change over time: the live reports show the current result."
             if [ "$(jq '[.[].detected] | add' results.json)" != 0 ]; then
               echo
               echo 'Flagged by:'
