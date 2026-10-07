@@ -26,6 +26,12 @@ void Load() {
   g_settings.mode = buf;
   GetPrivateProfileStringW(L"d3d9", L"Gpu", L"high-performance", buf, MAX_PATH, ini.c_str());
   g_settings.gpu = buf;
+  GetPrivateProfileStringW(L"d3d9", L"OnDeviceRemoved", L"message", buf, MAX_PATH, ini.c_str());
+  if (_wcsicmp(buf, L"message") != 0 && _wcsicmp(buf, L"exit") != 0 && _wcsicmp(buf, L"continue") != 0) {
+    log::Warn("config: unknown [d3d9] OnDeviceRemoved='%ls', using message", buf);
+    wcscpy_s(buf, L"message");
+  }
+  g_settings.on_device_removed = buf;
   GetPrivateProfileStringW(L"shaders", L"Tonemap", L"hdr", buf, MAX_PATH, ini.c_str());
   if (_wcsicmp(buf, L"replica") == 0) {
     g_settings.tonemap = TonemapVariant::kReplica;
@@ -105,6 +111,11 @@ void Load() {
   g_settings.quit_after_sec = GetPrivateProfileIntW(L"debug", L"QuitAfterSec", 0, ini.c_str());
   g_settings.minimize_at_sec = GetPrivateProfileIntW(L"debug", L"MinimizeAtSec", 0, ini.c_str());
   g_settings.restore_at_sec = GetPrivateProfileIntW(L"debug", L"RestoreAtSec", 0, ini.c_str());
+  g_settings.remove_device_at_sec = GetPrivateProfileIntW(L"debug", L"RemoveDeviceAtSec", 0, ini.c_str());
+  if (g_settings.remove_device_at_sec > 0) {
+    log::Warn("config: [debug] RemoveDeviceAtSec=%d - the GPU device will be removed on purpose",
+              g_settings.remove_device_at_sec);
+  }
   log::Info("config: [debug] CaptureAtSec='%ls' (%zu) QuitAfterSec=%d", buf, g_settings.capture_at_sec.size(),
             g_settings.quit_after_sec);
   log::Info("config: Chain='%ls' Mode='%ls' LogShaders=%d StatsIntervalSec=%d (ini %ls)", g_settings.chain.c_str(),

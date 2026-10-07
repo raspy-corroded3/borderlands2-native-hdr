@@ -20,6 +20,9 @@ struct Settings {
   // [d3d9] Gpu: graphics card for 9on12 - "high-performance" (default: the fastest GPU, e.g. the dedicated
   // one in a laptop with two), "minimum-power" (the integrated one) or "system" (9on12's own choice).
   std::wstring gpu = L"high-performance";
+  // [d3d9] OnDeviceRemoved: "message" (default: explain, then close the game), "exit" (close without a
+  // message) or "continue" (only log). 9on12 cannot recover a removed GPU device; the game would hang.
+  std::wstring on_device_removed = L"message";
   // [output] Mode: "dxgi" (default: our swapchain via 9on12 interop) or "d3d9" (game's own Present).
   std::wstring output = L"dxgi";
   bool UseDxgiOutput() const { return _wcsicmp(output.c_str(), L"dxgi") == 0; }
@@ -57,6 +60,9 @@ struct Settings {
   // [debug] MinimizeAtSec / RestoreAtSec: minimize and restore the game window (alt-tab test; 0 = off).
   int minimize_at_sec = 0;
   int restore_at_sec = 0;
+  // [debug] RemoveDeviceAtSec: remove the 9on12 D3D12 device N seconds after the first Present (tests
+  // OnDeviceRemoved; 0 = off).
+  int remove_device_at_sec = 0;
   // [debug] StatsIntervalSec: how often to log FPS and resource counts (0 = off).
   int stats_interval_sec = 0;
 };

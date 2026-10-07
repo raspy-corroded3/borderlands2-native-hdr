@@ -61,6 +61,7 @@ add_library(bl2hdr SHARED
   src/output_dxgi.cpp
   src/backbuffer.cpp
   src/automation.cpp
+  src/device_removed.cpp
   src/ue3.cpp
   src/menu.cpp
   src/dllmain.cpp

@@ -44,6 +44,7 @@ HDR output). Alt-tab works instantly.
 | `[display] ForceBorderless` | 1 | Turn exclusive fullscreen into a borderless window |
 | `[menu] HdrOption` | 1 | Add the HDR row to the Video menu |
 | `[menu] GameHooks` | 1 | Master switch for the game-script hooks (the menu option needs them) |
+| `[d3d9] OnDeviceRemoved` | message | If the graphics driver crashes or resets: `message` = explain and close the game, `exit` = close without a message, `continue` = leave it (the game hangs) |
 
 Edit the file while the game is closed. All keys are documented in the shipped `bl2hdr.ini`.
 
@@ -101,6 +102,9 @@ checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a do
 - Bink videos (loading screens, cutscenes) are shown at UI brightness and are not HDR-processed.
 - The cel-shading edge shaders are not yet reviewed for HDR values.
 - Frame captures (developer feature) can fail right after a resolution change.
+- If the graphics driver crashes or resets (TDR) while playing, 9on12 cannot recover the GPU device, so
+  bl2hdr shows a message and closes the game instead of leaving it frozen. Progress since the last save
+  point is lost. Plain D3D9 (`[d3d9] Mode=native`, no HDR) does not have this limit.
 - Only tested with the base game and a few DLC maps; only on NVIDIA.
 - BL2 is a 32-bit game and 9on12 uses about 300 MiB more of its 4 GiB address space than plain D3D9. After
   long sessions the game can stop with "ran out of video memory" even though the GPU has plenty left. If

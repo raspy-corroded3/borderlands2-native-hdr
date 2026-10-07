@@ -20,6 +20,7 @@
 #include <unordered_set>
 
 #include "config.h"
+#include "device_removed.h"
 #include "log.h"
 #include "shader_hash.h"
 #include "shader_swap.h"
@@ -514,6 +515,7 @@ HRESULT STDMETHODCALLTYPE Reset_Hook(IDirect3DDevice9* self, D3DPRESENT_PARAMETE
   backbuffer::Release();  // D3DPOOL_DEFAULT render targets must be released before Reset
   const HRESULT hr = s_reset.Original<Fn>(self)(self, pp);
   log::Info("Reset -> hr=0x%08lX", static_cast<unsigned long>(hr));
+  if (FAILED(hr)) device_removed::CheckAfterFailure(self, "Device::Reset", hr);
   if (SUCCEEDED(hr) && pp) {
     D3DDEVICE_CREATION_PARAMETERS cp{};
     self->GetCreationParameters(&cp);
@@ -549,7 +551,10 @@ HRESULT STDMETHODCALLTYPE Present_Hook(IDirect3DDevice9* self, const RECT* src, 
     if (IDirect3DSurface9* sub = backbuffer::Surface()) self->SetRenderTarget(0, sub);
   }
   if (g_frames.fetch_add(1) == 0) log::Info("first Present -> hr=0x%08lX", static_cast<unsigned long>(hr));
-  if (FAILED(hr)) log::Warn("Present -> hr=0x%08lX", static_cast<unsigned long>(hr));
+  if (FAILED(hr)) {
+    log::Warn("Present -> hr=0x%08lX", static_cast<unsigned long>(hr));
+    device_removed::CheckAfterFailure(self, "Device::Present", hr);
+  }
   MaybeLogStats();
   return hr;
 }

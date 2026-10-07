@@ -24,6 +24,7 @@
 
 #include "backbuffer.h"
 #include "config.h"
+#include "device_removed.h"
 #include "encode_ps.h"
 #include "encode_vs.h"
 #include "log.h"
@@ -234,9 +235,9 @@ bool CheckRemoved(const char* where, HRESULT hr) {
                     hr == DXGI_ERROR_DEVICE_HUNG || FAILED(reason);
   if (!lost) return false;
   g.removed = true;
-  log::Error("output(dxgi): GPU device removed or hung (%s: hr=0x%08lX, removed reason 0x%08lX) - our output stops; "
-             "the game continues on D3D9 Present",
+  log::Error("output(dxgi): GPU device removed or hung (%s: hr=0x%08lX, removed reason 0x%08lX) - our output stops",
              where, static_cast<unsigned long>(hr), static_cast<unsigned long>(reason));
+  device_removed::Report(where, FAILED(reason) ? reason : hr);
   return true;
 }
 
@@ -558,6 +559,8 @@ void SetWindow(HWND hwnd, UINT width, UINT height) {
   g.width = width;
   g.height = height;
 }
+
+HWND Window() { return g.hwnd; }
 
 bool Enabled(IDirect3DDevice9* device) {
   if (!config::Get().UseDxgiOutput() || g.removed) return false;

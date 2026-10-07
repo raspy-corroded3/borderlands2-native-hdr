@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "config.h"
+#include "device_removed.h"
 #include "log.h"
 #include "output_dxgi.h"
 
@@ -61,7 +62,10 @@ void TimerThread() {
 
 void OnPresent(IDirect3DDevice9* device) {
   const auto& cfg = config::Get();
-  if (cfg.capture_at_sec.empty() && cfg.quit_after_sec <= 0 && cfg.minimize_at_sec <= 0) return;
+  if (cfg.capture_at_sec.empty() && cfg.quit_after_sec <= 0 && cfg.minimize_at_sec <= 0 &&
+      cfg.remove_device_at_sec <= 0) {
+    return;
+  }
   if (g_first_qpc.load() == 0) {
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
@@ -78,6 +82,11 @@ void OnPresent(IDirect3DDevice9* device) {
   if (g_next_capture < cfg.capture_at_sec.size() && secs >= cfg.capture_at_sec[g_next_capture]) {
     const int at = cfg.capture_at_sec[g_next_capture++];
     output::RequestCapture("t" + std::to_string(at));
+  }
+  static bool removed = false;
+  if (!removed && cfg.remove_device_at_sec > 0 && secs >= cfg.remove_device_at_sec) {
+    removed = true;
+    device_removed::DebugRemove(device);
   }
 }
 }  // namespace bl2hdr::automation

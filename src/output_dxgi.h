@@ -10,6 +10,8 @@
 namespace bl2hdr::output {
 // Remember the window the device renders to (called after CreateDevice/Reset).
 void SetWindow(HWND hwnd, UINT width, UINT height);
+// The game window (from SetWindow), or nullptr.
+HWND Window();
 // True when [output] Mode=dxgi and the device is 9on12.
 bool Enabled(IDirect3DDevice9* device);
 // Replaces IDirect3DDevice9::Present. Returns the HRESULT to give back to the game.
