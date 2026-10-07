@@ -36,7 +36,8 @@ HDR output). Alt-tab works instantly.
 |---|---|---|
 | `[hdr] Enabled` | 1 | HDR on/off (also set from the Video menu) |
 | `[hdr] PaperWhiteNits` | 203 | Brightness of SDR white in the 3D scene. 200–300 is typical. |
-| `[hdr] UIWhiteNits` | = PaperWhiteNits | Brightness of the HUD, menus, loading screens and videos |
+| `[hdr] UIWhiteNits` | = PaperWhiteNits | Brightness of the HUD, menus and loading screens |
+| `[hdr] VideoWhiteNits` | = UIWhiteNits | Brightness of cutscenes (Bink videos) |
 | `[hdr] PeakNits` | 1000 | Your display's peak (use the test pattern below) |
 | `[hdr] Strength` | 1.0 | How far highlights extend (0 = SDR look, up to 2) |
 | `[hdr] TestPattern` | 0 | 1 = show the peak-brightness test pattern instead of the game |
@@ -99,8 +100,8 @@ Releases are built by GitHub Actions from a version tag (`.github/workflows/rele
 checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a download).
 
 ## Known issues / to do
-- Bink videos (cutscenes, trailers) stay SDR: they look exactly like the original game, with white at
-  `UIWhiteNits`.
+- Bink videos (cutscenes, trailers) stay SDR: they look like the original game, with white at
+  `VideoWhiteNits`.
 - If the graphics driver crashes or resets (TDR) while playing, 9on12 cannot recover the GPU device, so
   bl2hdr shows a message and closes the game instead of leaving it frozen. Progress since the last save
   point is lost. Plain D3D9 (`[d3d9] Mode=native`, no HDR) does not have this limit.

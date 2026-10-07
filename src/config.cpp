@@ -90,6 +90,12 @@ void Load() {
   g_settings.ui_white_nits = buf[0] ? static_cast<float>(_wtof(buf)) : g_settings.paper_white_nits;
   if (g_settings.ui_white_nits < 40.f || g_settings.ui_white_nits > 1000.f) g_settings.ui_white_nits = g_settings.paper_white_nits;
   log::Info("config: [hdr] UIWhiteNits=%.0f", g_settings.ui_white_nits);
+  GetPrivateProfileStringW(L"hdr", L"VideoWhiteNits", L"", buf, MAX_PATH, ini.c_str());
+  g_settings.video_white_nits = buf[0] ? static_cast<float>(_wtof(buf)) : g_settings.ui_white_nits;
+  if (g_settings.video_white_nits < 40.f || g_settings.video_white_nits > 1000.f) {
+    g_settings.video_white_nits = g_settings.ui_white_nits;
+  }
+  log::Info("config: [hdr] VideoWhiteNits=%.0f", g_settings.video_white_nits);
   log::Info("config: [output] Format=%s, [hdr] PaperWhiteNits=%.0f PeakNits=%.0f DebugHighlights=%d",
             g_settings.output_hdr ? "hdr" : "sdr", g_settings.paper_white_nits, g_settings.peak_nits,
             g_settings.debug_highlights);
@@ -124,6 +130,13 @@ void Load() {
 }
 
 const Settings& Get() { return g_settings; }
+Settings& Mutable() { return g_settings; }
+
+void SaveHdr(const wchar_t* key, float value, int decimals) {
+  wchar_t text[32];
+  swprintf_s(text, L"%.*f", decimals, value);
+  WritePrivateProfileStringW(L"hdr", key, text, IniPath().c_str());
+}
 }  // namespace bl2hdr::config
 
 namespace bl2hdr::process {

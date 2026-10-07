@@ -32,6 +32,7 @@ struct Settings {
   // [hdr] brightness settings (nits) and debug view.
   float paper_white_nits = 203.0f;  // brightness of SDR white in the 3D scene ("game brightness")
   float ui_white_nits = 203.0f;     // [hdr] UIWhiteNits: HUD/menus/2D screens (default = PaperWhiteNits)
+  float video_white_nits = 203.0f;  // [hdr] VideoWhiteNits: Bink cutscenes (default = UIWhiteNits)
   float peak_nits = 1000.0f;        // safety clamp for the output
   bool debug_highlights = false;    // show values above 1.0 (beyond SDR) in magenta
   bool test_pattern = false;        // [hdr] TestPattern: show the peak-brightness test pattern instead of the game
@@ -69,4 +70,11 @@ struct Settings {
 
 void Load();
 const Settings& Get();
+// The HDR menu changes these at runtime (game thread); renderer threads read them every frame.
+Settings& Mutable();
+// Brightness/strength limits shared by the ini loader and the menu sliders.
+constexpr float kMinWhiteNits = 80.0f, kMaxWhiteNits = 500.0f;
+constexpr float kMinPeakNits = 400.0f, kMaxPeakNits = 2000.0f;
+// Writes one [hdr] key to bl2hdr.ini (value formatted with no decimals unless `decimals` > 0).
+void SaveHdr(const wchar_t* key, float value, int decimals = 0);
 }  // namespace bl2hdr::config

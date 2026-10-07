@@ -10,6 +10,7 @@
 #include <dxgi1_4.h>
 
 #include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <cstdarg>
 #include <cstdio>
@@ -371,6 +372,8 @@ HRESULT STDMETHODCALLTYPE Clear_Hook(IDirect3DDevice9* self, DWORD count, const 
 
 // Our HDR tonemap shader object (set when the replacement is created); its parameters live in c50.
 std::atomic<IDirect3DPixelShader9*> g_hdr_tonemap_ps{nullptr};
+// Our Bink video shader object; c4.x = cutscene brightness relative to UI white.
+std::atomic<IDirect3DPixelShader9*> g_video_ps{nullptr};
 
 HRESULT STDMETHODCALLTYPE SetPixelShader_Hook(IDirect3DDevice9* self, IDirect3DPixelShader9* ps) {
   using Fn = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, IDirect3DPixelShader9*);
@@ -388,6 +391,13 @@ HRESULT STDMETHODCALLTYPE SetPixelShader_Hook(IDirect3DDevice9* self, IDirect3DP
     const float game_to_ui = hdr_out ? cfg.paper_white_nits / cfg.ui_white_nits : 1.0f;
     const float params[4] = {cfg.peak_nits / cfg.paper_white_nits, strength, game_to_ui, 0.0f};
     self->SetPixelShaderConstantF(50, params, 1);
+  } else if (ps && ps == g_video_ps.load(std::memory_order_relaxed)) {
+    const auto& cfg = config::Get();
+    const bool hdr_out = backbuffer::Surface() != nullptr;  // 8-bit back buffer: no scaling above white
+    // The back buffer holds gamma-2.2 values (the encode pass linearises them): scale by the root.
+    const float scale = hdr_out ? std::pow(cfg.video_white_nits / cfg.ui_white_nits, 1.0f / 2.2f) : 1.0f;
+    const float params[4] = {scale, 0.0f, 0.0f, 0.0f};
+    self->SetPixelShaderConstantF(4, params, 1);
   }
   return hr;
 }
@@ -658,6 +668,10 @@ HRESULT STDMETHODCALLTYPE CreatePixelShader_Hook(IDirect3DDevice9* self, const D
         (*out)->AddRef();
         if (IDirect3DPixelShader9* old = g_hdr_tonemap_ps.exchange(*out)) old->Release();
       }
+      if (out && *out && crc == 0x33244F80u) {  // our video shader reads c4: same reasoning as above
+        (*out)->AddRef();
+        if (IDirect3DPixelShader9* old = g_video_ps.exchange(*out)) old->Release();
+      }
       return hr;
     }
     log::Error("CreatePixelShader 0x%08X: replacement '%s' failed hr=0x%08lX - using the original", crc,
@@ -695,7 +709,7 @@ void HookDevice(IDirect3DDevice9* dev) {
   if (config::Get().trace_frame_at_sec > 0 || backbuffer::Enabled()) {
     s_get_bb.Patch(dev, kSlotDev_GetBackBuffer, reinterpret_cast<void*>(&GetBackBuffer_Hook), "Device::GetBackBuffer");
   }
-  if (config::Get().trace_frame_at_sec > 0 || config::Get().tonemap == config::TonemapVariant::kHdr) {
+  {  // always: our video shader (always swapped in) needs its c4 brightness constant
     s_set_ps.Patch(dev, kSlotDev_SetPixelShader, reinterpret_cast<void*>(&SetPixelShader_Hook),
                    "Device::SetPixelShader");
   }
