@@ -346,13 +346,14 @@ bool OnProcessEvent(ue3::UObject* obj, ue3::UFunction* fn, void* params, bool po
     }
   } else if (fn == g_on_clik) {
     // EventData: Type (FString, 12 bytes), Data, mouseIndex, Button, Index (+24), lastIndex, controllerIdx.
-    // "change" is the selection moving onto a row: the game's handler updates the description, so it
-    // passes. Any other type on the HDR row opens the page.
+    // Only "itemClick" (Enter, controller A, mouse click) opens the page. Everything else passes to the
+    // game's handler, which highlights the row and shows its description: "change" (selection moved with
+    // keys/pad) and "itemRollOver" (mouse hover).
     const int32_t index = ReadInt(params, g_off_clik_data + 24);
     const int32_t id = RowEventId(obj, index);
     const auto* type = *reinterpret_cast<const wchar_t* const*>(static_cast<uint8_t*>(params) + g_off_clik_data);
     const std::wstring kind = type ? type : L"";
-    if (id == kHdrEventId && g_use_page && kind != L"change") {
+    if (id == kHdrEventId && g_use_page && kind == L"itemClick") {
       log::Info("menu: '%ls' on the HDR row %d", kind.c_str(), index);
       if (!g_page) OpenHdrPage(obj);
       return true;
