@@ -125,6 +125,13 @@ checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a do
   and gives the SDR look).
 - Optional on/off setting for the cel-shading outlines.
 - Use less of the game's 32-bit address space, to remove the "ran out of video memory" issue above.
+- Lighting and reflections in HDR (ideas, to explore):
+  - HDR intensity for dynamic lights: adjust the game's separate per-light passes (point, spot, directional).
+    Expected cost: negligible.
+  - Brighter reflections and shine in HDR: BL2's reflections are pre-made cubemaps sampled inside each
+    material, so this means patching material shaders as the game creates them. Expected cost: negligible.
+  - Screen-space reflections as a new pass: an experiment only. Roughly 0.5-2 ms per frame at 1440p, and
+    BL2 has no normal buffer (normals would be reconstructed from depth).
 
 ## Credits and licence
 MIT licence — see [LICENSE](LICENSE). Third-party references and credits:
