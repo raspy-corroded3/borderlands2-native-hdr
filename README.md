@@ -15,6 +15,11 @@ A drop-in `d3d9.dll` that adds **real HDR output** to Borderlands 2 (PC, Steam),
 > Odyssey G6 HDR600). Reports from other hardware are very welcome — open an issue with your GPU,
 > driver, display and `bl2hdr.log` (from `Binaries\Win32`).
 
+## Screenshots
+| Options → Video: the **HDR** row, below Window Mode | The HDR settings page |
+|---|---|
+| ![Video options with the HDR row selected](docs/images/video-options-hdr-row.png) | ![HDR settings page: HDR on/off and brightness sliders](docs/images/hdr-settings-page.png) |
+
 ## Requirements
 - Borderlands 2 for Windows (Steam, game version 1.0.257.2863302; other versions untested).
 - Windows 10/11 with **HDR enabled** (Settings → System → Display → Use HDR).
