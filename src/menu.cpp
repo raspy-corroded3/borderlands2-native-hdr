@@ -102,7 +102,38 @@ bool RunMovieCommand(ue3::UObject* pc, const std::wstring& cmd) {
   return true;
 }
 
+// "!echo <event tag path> <name tag path>" plays an ECHO recording through
+// WillowDialogManager.PlayEchoDialog (the game's own path; video ECHOs show a TextureMovie portrait), e.g.
+// "!echo GD_DialogEpisode2.Events.VO_Ep2_Pt1_01_echo_Angel GD_Dialog_NPC.Names.DialogName_Angel".
+void RunEchoCommand(const std::wstring& cmd) {
+  std::string args;  // object paths are ASCII
+  for (size_t i = 6; i < cmd.size(); ++i) args += static_cast<char>(cmd[i]);
+  const size_t space = args.find(' ');
+  const std::string event_path = args.substr(0, space);
+  const std::string name_path = space == std::string::npos ? "" : args.substr(args.find_first_not_of(' ', space));
+  ue3::UObject* manager = ue3::FindInstance("WillowDialogManager");
+  ue3::UFunction* fn = ue3::FindFunction("WillowGame.WillowDialogManager.PlayEchoDialog");
+  ue3::UObject* event = ue3::FindObject("WillowDialogEventTag", event_path);
+  ue3::UObject* name = name_path.empty() ? nullptr : ue3::FindObject("WillowDialogNameTag", name_path);
+  if (!manager || !fn || !event || (!name_path.empty() && !name)) {
+    log::Warn("menu: '%ls' skipped (manager %p, function %p, event %p, name %p)", cmd.c_str(),
+              static_cast<void*>(manager), static_cast<void*>(fn), static_cast<void*>(event), static_cast<void*>(name));
+    return;
+  }
+  ue3::Params p(fn);
+  if (!p.SetObject("InEvent", event) || !p.SetObject("InName", name) || !p.SetBool("bForcePlayAsPureEcho", false)) {
+    log::Error("menu: '%ls' parameters not as expected (%s)", cmd.c_str(), p.Describe().c_str());
+    return;
+  }
+  ue3::Call(manager, fn, p.data());
+  log::Info("menu: '%ls' called PlayEchoDialog", cmd.c_str());
+}
+
 void RunConsoleCommand(const std::wstring& cmd) {
+  if (cmd.rfind(L"!echo ", 0) == 0) {
+    RunEchoCommand(cmd);
+    return;
+  }
   ue3::UObject* pc = ue3::FindInstance("WillowPlayerController");
   if (pc && RunMovieCommand(pc, cmd)) return;
   if (!pc || !g_console_command) {
