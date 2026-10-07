@@ -1,0 +1,104 @@
+name: nexus
+
+# Uploads a release's two zips to the Nexus Mods page as new versions of its two existing files
+# (manual install, mod manager), archives the previous versions, sets the mod's version and adds a
+# changelog made from the release notes. Uses the Nexus Mods Upload API (open beta) through their
+# official action. The first upload of each file is done by hand on the website (the API can only add
+# versions to existing files).
+# Setup (repo settings): secret NEXUSMODS_API_KEY (nexusmods.com/settings/api-keys); variables
+# NEXUS_MOD_ID, NEXUS_FILE_ID_MANUAL, NEXUS_FILE_ID_MOD_MANAGER (Files tab > API info). Until all
+# four are set, the job is skipped with a warning.
+# Called by release.yml after each release; can also be run by hand for any release tag.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to upload, e.g. v1.0.1-beta.2"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency: nexus  # one upload to the mod page at a time
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      HAS_KEY: ${{ secrets.NEXUSMODS_API_KEY != '' }}
+      MOD_ID: ${{ vars.NEXUS_MOD_ID }}
+      FILE_MANUAL: ${{ vars.NEXUS_FILE_ID_MANUAL }}
+      FILE_MOD_MANAGER: ${{ vars.NEXUS_FILE_ID_MOD_MANAGER }}
+    steps:
+      - name: Check inputs
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9A-Za-z.-]+$ ]]; then echo "::error::invalid tag '$TAG'"; exit 1; fi
+          if [ "$HAS_KEY" != true ] || [ -z "$MOD_ID" ] || [ -z "$FILE_MANUAL" ] || [ -z "$FILE_MOD_MANAGER" ]; then
+            echo "::warning::Nexus Mods upload not set up (NEXUSMODS_API_KEY secret, NEXUS_* variables) - skipping"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Download the release files
+        if: env.SKIP != '1'
+        run: |
+          gh release download "$TAG" -R "$REPO" -p "bl2hdr-$TAG.zip" -p "bl2hdr-$TAG-mod-manager.zip" -D files
+          ls -l files
+
+      # Changelog: the bullet points of the release notes (up to the build footer) under their section
+      # headings, as plain text, and a link to the full notes.
+      - name: Make the changelog
+        if: env.SKIP != '1'
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" -R "$REPO" --json body,url --jq '.body, "URL=" + .url' | tr -d '\r' > notes.md
+          url=$(sed -n 's/^URL=//p' notes.md)
+          awk 'function flush() { if (item != "") { if (head != "") { print head; head = "" } print item } item = "" }
+               /^---|^<!-- virustotal|^URL=/ { exit }
+               /^### / { flush(); sub(/^### */, ""); head = $0 ":"; next }
+               /^ *- / { flush(); match($0, /^ */); ind = substr($0, 1, RLENGTH); sub(/^ *- */, "");
+                         item = ind "- " $0; next }
+               /^ +[^ ]/ && item != "" { sub(/^ +/, ""); item = item " " $0; next }
+               { flush() }
+               END { flush() }' notes.md | sed 's/\*\*//g; s/`//g' > changelog.txt
+          echo "Full release notes: $url" >> changelog.txt
+          cat changelog.txt
+          { echo 'CHANGELOG<<EOF_CHANGELOG'; cat changelog.txt; echo 'EOF_CHANGELOG'; } >> "$GITHUB_ENV"
+
+      # Pinned to a commit: third-party code that receives the API key (v1.0.0-beta.10, reviewed 2026-10-07).
+      - name: Upload the manual-install zip
+        if: env.SKIP != '1'
+        uses: Nexus-Mods/upload-action@c96019556046053aa26044b44396cd38929daf23
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ env.FILE_MANUAL }}
+          filename: files/bl2hdr-${{ inputs.tag }}.zip
+          version: ${{ env.VERSION }}
+          display_name: bl2hdr - Manual install
+          description: Copy d3d9.dll and bl2hdr.ini into Borderlands 2\Binaries\Win32.
+          archive_existing_version: true
+          update_mod_version: true
+          mod_id: ${{ env.MOD_ID }}
+          changelog: ${{ env.CHANGELOG }}
+
+      - name: Upload the mod-manager zip
+        if: env.SKIP != '1'
+        uses: Nexus-Mods/upload-action@c96019556046053aa26044b44396cd38929daf23
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ env.FILE_MOD_MANAGER }}
+          filename: files/bl2hdr-${{ inputs.tag }}-mod-manager.zip
+          version: ${{ env.VERSION }}
+          display_name: bl2hdr - Mod manager (Vortex)
+          description: "For mod managers: installs into Binaries\\Win32."
+          archive_existing_version: true
+          primary_mod_manager_download: true

@@ -62,12 +62,23 @@ jobs:
           Mod managers: ``bl2hdr-${{ github.ref_name }}-mod-manager.zip`` has the same files laid out from the game folder.
           Verify: ``gh attestation verify d3d9.dll --repo ${{ github.repository }}`` and SHA256SUMS.txt.
           "@
+          # Hand-written notes for this version, if committed before tagging (also the Nexus changelog).
+          $notesFile = "docs/release-notes/${{ github.ref_name }}.md"
+          if (Test-Path $notesFile) { $notes = (Get-Content -Raw $notesFile).TrimEnd() + "`n`n---`n" + $notes }
           $ghArgs = @("release", "create", "${{ github.ref_name }}", "release/d3d9.dll", "release/bl2hdr.ini",
                       "bl2hdr-${{ github.ref_name }}.zip", "bl2hdr-${{ github.ref_name }}-mod-manager.zip",
                       "SHA256SUMS.txt",
                       "--title", "bl2hdr ${{ github.ref_name }}", "--notes", $notes)
           if ("${{ github.ref_name }}" -match "-") { $ghArgs += "--prerelease" }  # e.g. v1.0.0-beta.1
           gh @ghArgs
+
+  # New versions of both files on the Nexus Mods page (skipped until the Nexus IDs and API key are set).
+  nexus:
+    needs: release
+    uses: ./.github/workflows/nexus.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
 
   # VirusTotal scan of the published files: result in the release notes and the README badge.
   virustotal:

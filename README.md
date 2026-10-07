@@ -111,7 +111,10 @@ Contributions are welcome — bug reports, test results on other hardware, and p
 Releases are built by GitHub Actions from a version tag (`.github/workflows/release.yml`), with SHA-256
 checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a download). The published files
 are then scanned on VirusTotal automatically (`.github/workflows/virustotal.yml`): the result is in each
-release's notes and in the badge at the top of this page.
+release's notes and in the badge at the top of this page. The same release also updates the
+[Nexus Mods](https://www.nexusmods.com/) page (`.github/workflows/nexus.yml`, Nexus Mods Upload API): new
+versions of both zips, with a changelog made from the release notes. Write the notes in
+`docs/release-notes/<tag>.md` and commit them before pushing the tag; the release uses them as its notes.
 
 ## Known issues
 - **"Ran out of video memory" after long sessions.** BL2 is a 32-bit game and 9on12 uses about 300 MiB more
