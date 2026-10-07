@@ -99,7 +99,8 @@ Releases are built by GitHub Actions from a version tag (`.github/workflows/rele
 checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a download).
 
 ## Known issues / to do
-- Bink videos (loading screens, cutscenes) are shown at UI brightness and are not HDR-processed.
+- Bink videos (cutscenes, trailers) stay SDR: they look exactly like the original game, with white at
+  `UIWhiteNits`.
 - Frame captures (developer feature) can fail right after a resolution change.
 - If the graphics driver crashes or resets (TDR) while playing, 9on12 cannot recover the GPU device, so
   bl2hdr shows a message and closes the game instead of leaving it frozen. Progress since the last save
