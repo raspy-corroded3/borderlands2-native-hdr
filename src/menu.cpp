@@ -71,8 +71,40 @@ void AddHdrRow(ue3::UObject* list, ue3::UObject* provider) {
             static_cast<void*>(list), static_cast<void*>(provider));
 }
 
+// Test-only pseudo commands (not console commands): "!movie <name>" plays a Bink movie from
+// WillowGame\Movies through GamePlayerController.ClientPlayMovie (the game's own cutscene path),
+// "!moviestop" stops it.
+bool RunMovieCommand(ue3::UObject* pc, const std::wstring& cmd) {
+  if (cmd.rfind(L"!movie", 0) != 0) return false;
+  const bool stop = cmd == L"!moviestop";
+  const size_t start = cmd.find_first_not_of(L' ', 6);
+  const std::wstring name = stop || start == std::wstring::npos ? L"" : cmd.substr(start);
+  ue3::UFunction* fn = ue3::FindFunction(stop ? "GameFramework.GamePlayerController.ClientStopMovie"
+                                              : "GameFramework.GamePlayerController.ClientPlayMovie");
+  if (!fn || (!stop && name.empty())) {
+    log::Warn("menu: '%ls' skipped (function %p)", cmd.c_str(), static_cast<void*>(fn));
+    return true;
+  }
+  ue3::Params p(fn);
+  bool ok;
+  if (stop) {
+    ok = p.SetBool("bForceStopNonSkippable", true);
+  } else {
+    ok = p.SetString("MovieName", name) && p.SetInt("InStartOfRenderingMovieFrame", -1) &&
+         p.SetInt("InEndOfRenderingMovieFrame", -1) && p.SetBool("bPlayOnceFromStream", true);
+  }
+  if (!ok) {
+    log::Error("menu: '%ls' parameters not as expected (%s)", cmd.c_str(), p.Describe().c_str());
+    return true;
+  }
+  ue3::Call(pc, fn, p.data());
+  log::Info("menu: '%ls' called %s", cmd.c_str(), stop ? "ClientStopMovie" : "ClientPlayMovie");
+  return true;
+}
+
 void RunConsoleCommand(const std::wstring& cmd) {
   ue3::UObject* pc = ue3::FindInstance("WillowPlayerController");
+  if (pc && RunMovieCommand(pc, cmd)) return;
   if (!pc || !g_console_command) {
     log::Warn("menu: console '%ls' skipped (player controller %p, function %p)", cmd.c_str(), static_cast<void*>(pc),
               static_cast<void*>(g_console_command));
