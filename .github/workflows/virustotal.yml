@@ -1,6 +1,6 @@
 name: virustotal
 
-# Scans a release's d3d9.dll and zip on VirusTotal and publishes the result:
+# Scans a release's d3d9.dll and zips on VirusTotal and publishes the result:
 #   - a "VirusTotal" section in that release's notes (with links to the live reports)
 #   - badge data (virustotal-badge.json, shields.io endpoint format) and VIRUSTOTAL.md on the `badges`
 #     branch, shown by the README badge.
@@ -44,7 +44,7 @@ jobs:
 
       - name: Download the release files
         if: env.SKIP != '1'
-        run: gh release download "$TAG" -R "$REPO" -p d3d9.dll -p "bl2hdr-$TAG.zip" -D files
+        run: gh release download "$TAG" -R "$REPO" -p d3d9.dll -p "bl2hdr-$TAG*.zip" -D files  # the mod-manager zip exists from 1.0.1-beta.2 on
 
       - name: Scan on VirusTotal
         if: env.SKIP != '1'
@@ -53,7 +53,7 @@ jobs:
           api=https://www.virustotal.com/api/v3
           vt() { curl -sS --retry 3 --retry-delay 20 -H "x-apikey: $VT_API_KEY" "$@"; }
           echo '[]' > results.json
-          for f in files/d3d9.dll "files/bl2hdr-$TAG.zip"; do
+          for f in files/d3d9.dll files/bl2hdr-*.zip; do
             name=$(basename "$f")
             sha=$(sha256sum "$f" | cut -d' ' -f1)
             # Always a fresh analysis: a known file is re-analysed, so a re-run shows today's result (e.g. after

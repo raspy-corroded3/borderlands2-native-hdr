@@ -34,6 +34,9 @@ A drop-in `d3d9.dll` that adds **real HDR output** to Borderlands 2 (PC, Steam),
    If a `d3d9.dll` from another mod is already there, move it away first.
 3. Start the game. In **Options → Video**, the **HDR** row (below Window Mode) opens the HDR settings.
 
+With a mod manager (e.g. Vortex), use `bl2hdr-<version>-mod-manager.zip` instead: the same files, laid out
+from the game folder (`Binaries\Win32\...`), so the manager puts them in the right place.
+
 To uninstall, delete `d3d9.dll` and `bl2hdr.ini` (and `bl2hdr.log`) from that folder.
 
 The game is switched from exclusive fullscreen to a borderless window automatically (required for the

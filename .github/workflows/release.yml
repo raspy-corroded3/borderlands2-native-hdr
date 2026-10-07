@@ -26,7 +26,20 @@ jobs:
           New-Item -ItemType Directory $out | Out-Null
           Copy-Item build/Release/d3d9.dll, dist/bl2hdr.ini, README.md, LICENSE, THIRD_PARTY_NOTICES.md $out
           Compress-Archive -Path "$out/*" -DestinationPath "bl2hdr-${{ github.ref_name }}.zip"
-          Get-FileHash "$out/d3d9.dll", "$out/bl2hdr.ini", "bl2hdr-${{ github.ref_name }}.zip" -Algorithm SHA256 |
+          # Second zip laid out from the game folder, for mod managers (e.g. Vortex): the files land in
+          # Binaries\Win32, the docs in Binaries\Win32\bl2hdr-docs.
+          $mm = "mod-manager/Binaries/Win32"
+          New-Item -ItemType Directory "$mm/bl2hdr-docs" -Force | Out-Null
+          Copy-Item "$out/d3d9.dll", "$out/bl2hdr.ini" $mm
+          Copy-Item "$out/README.md", "$out/LICENSE", "$out/THIRD_PARTY_NOTICES.md" "$mm/bl2hdr-docs"
+          Compress-Archive -Path "mod-manager/*" -DestinationPath "bl2hdr-${{ github.ref_name }}-mod-manager.zip"
+          # Zip entries must use '/' (Windows PowerShell 5.1 wrote '\', which mod managers misread).
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead("$PWD/bl2hdr-${{ github.ref_name }}-mod-manager.zip")
+          $names = $zip.Entries.FullName; $zip.Dispose(); $names
+          if ($names -like '*\*' -or $names -notcontains "Binaries/Win32/d3d9.dll") { throw "bad mod-manager zip layout" }
+          Get-FileHash "$out/d3d9.dll", "$out/bl2hdr.ini", "bl2hdr-${{ github.ref_name }}.zip",
+                       "bl2hdr-${{ github.ref_name }}-mod-manager.zip" -Algorithm SHA256 |
             ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
             Set-Content -Encoding ascii SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
@@ -36,6 +49,7 @@ jobs:
           subject-path: |
             release/d3d9.dll
             bl2hdr-${{ github.ref_name }}.zip
+            bl2hdr-${{ github.ref_name }}-mod-manager.zip
       - name: Create GitHub release
         shell: pwsh
         env:
@@ -45,10 +59,12 @@ jobs:
           Built by GitHub Actions from tag ${{ github.ref_name }} (commit ${{ github.sha }}).
 
           Install: copy ``d3d9.dll`` and ``bl2hdr.ini`` into ``Borderlands 2\Binaries\Win32``. See README.md.
+          Mod managers: ``bl2hdr-${{ github.ref_name }}-mod-manager.zip`` has the same files laid out from the game folder.
           Verify: ``gh attestation verify d3d9.dll --repo ${{ github.repository }}`` and SHA256SUMS.txt.
           "@
           $ghArgs = @("release", "create", "${{ github.ref_name }}", "release/d3d9.dll", "release/bl2hdr.ini",
-                      "bl2hdr-${{ github.ref_name }}.zip", "SHA256SUMS.txt",
+                      "bl2hdr-${{ github.ref_name }}.zip", "bl2hdr-${{ github.ref_name }}-mod-manager.zip",
+                      "SHA256SUMS.txt",
                       "--title", "bl2hdr ${{ github.ref_name }}", "--notes", $notes)
           if ("${{ github.ref_name }}" -match "-") { $ghArgs += "--prerelease" }  # e.g. v1.0.0-beta.1
           gh @ghArgs
