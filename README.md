@@ -99,24 +99,32 @@ Contributions are welcome — bug reports, test results on other hardware, and p
 - **Rules:** no game code, assets or anything extracted from the game (shaders, packages, decompiled
   code); facts such as offsets, byte patterns or shader CRCs are fine. Keep the DLL 32-bit with no new
   runtime dependencies, and match the existing code style.
-- The items below are good places to start.
+- The [To do](#to-do) list below is a good place to start.
 - Security problems: please report them privately — see [SECURITY.md](SECURITY.md). Everyone taking part
   is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Releases are built by GitHub Actions from a version tag (`.github/workflows/release.yml`), with SHA-256
 checksums and a build attestation (see [SECURITY.md](SECURITY.md) to verify a download).
 
-## Known issues / to do
-- Bink videos (cutscenes, trailers) stay SDR: they look like the original game, with white at
-  `VideoWhiteNits`.
-- If the graphics driver crashes or resets (TDR) while playing, 9on12 cannot recover the GPU device, so
-  bl2hdr shows a message and closes the game instead of leaving it frozen. Progress since the last save
-  point is lost. Plain D3D9 (`[d3d9] Mode=native`, no HDR) does not have this limit.
-- Only tested with the base game and a few DLC maps; only on NVIDIA.
-- BL2 is a 32-bit game and 9on12 uses about 300 MiB more of its 4 GiB address space than plain D3D9. After
-  long sessions the game can stop with "ran out of video memory" even though the GPU has plenty left. If
-  that happens, lower the texture pool in `Documents\My Games\Borderlands 2\WillowGame\Config\WillowEngine.ini`:
-  `[TextureStreaming]` `PoolSize=256` (instead of 512 or higher).
+## Known issues
+- **"Ran out of video memory" after long sessions.** BL2 is a 32-bit game and 9on12 uses about 300 MiB more
+  of its 4 GiB address space than plain D3D9, so the game can stop with this message even though the GPU has
+  plenty left. If that happens, lower the texture pool in
+  `Documents\My Games\Borderlands 2\WillowGame\Config\WillowEngine.ini`: `[TextureStreaming]`
+  `PoolSize=256` (instead of 512 or higher).
+- **Graphics driver crash or reset (TDR).** 9on12 cannot recover the GPU device, so bl2hdr shows a message
+  and closes the game instead of leaving it frozen. Progress since the last save point is lost. Plain D3D9
+  (`[d3d9] Mode=native`, no HDR) does not have this limit.
+- **Cutscenes stay SDR.** The Bink videos themselves are SDR: they look like the original game, with white
+  at `VideoWhiteNits` (Cutscene brightness).
+
+## To do
+- Test on AMD and Intel GPUs and on laptops with two GPUs (so far only tested on NVIDIA). Reports welcome.
+- Test more of the DLC maps (so far: the base game and a few DLC maps).
+- Optional "full off" setting: start without the HDR output at all (today HDR Off keeps the HDR pipeline
+  and gives the SDR look).
+- Optional on/off setting for the cel-shading outlines.
+- Use less of the game's 32-bit address space, to remove the "ran out of video memory" issue above.
 
 ## Credits and licence
 MIT licence — see [LICENSE](LICENSE). Third-party references and credits:
