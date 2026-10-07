@@ -30,6 +30,8 @@
 
 namespace bl2hdr::menu {
 namespace {
+// The game's WillowScrollingListDataProviderVideoOptions.EVENT_ID_WINDOW_MODE (WillowGame.upk Const "5001").
+constexpr int32_t kWindowModeEventId = 5001;
 // EventIDs unused by the game's own options.
 constexpr int32_t kHdrEventId = 9417;  // Video options row: opens the HDR page (or the fallback spinner)
 constexpr int32_t kRowEnabled = 9418;  // HDR page rows
@@ -63,6 +65,8 @@ size_t g_next_console = 0;
 bool g_use_page = false;               // HDR page available (else the fallback spinner row)
 ue3::UObject* g_video_provider = nullptr;  // the Video options provider that got our row
 ue3::UObject* g_page = nullptr;            // the HDR page while it is pushed (game thread)
+bool g_in_video_populate = false;          // inside the Video options' Populate (game thread)
+bool g_video_row_added = false;            // our row was added during this Populate
 
 double Seconds() {
   if (!g_first_qpc) return 0.0;
@@ -208,6 +212,7 @@ void OnSlider(int32_t id, int32_t value) {
 // ---- Video options row ----
 void AddHdrRow(ue3::UObject* list, ue3::UObject* provider) {
   g_video_provider = provider;
+  g_video_row_added = true;
   if (g_use_page) {
     ue3::Params p(g_add_item);
     if (!(p.SetInt("EventID", kHdrEventId) && p.SetString("Caption", L"HDR") && p.SetBool("bDisabled", false))) {
@@ -357,6 +362,22 @@ bool OnProcessEvent(ue3::UObject* obj, ue3::UFunction* fn, void* params, bool po
 }
 
 void OnCallFunction(ue3::UObject* obj, ue3::UFunction* fn, ue3::FFrame* stack, bool post) {
+  // Our row goes right after the game's "Window Mode" row: after each AddListItem made by the Video
+  // options' Populate, look at the row just added (end of IndexToEventId). If that row never comes,
+  // the row is added at the end when Populate returns.
+  if (fn == g_populate) {
+    g_in_video_populate = !post;
+    if (!post) {
+      g_video_row_added = false;
+      return;
+    }
+  } else if (fn == g_add_item && post && g_in_video_populate && !g_video_row_added) {
+    std::vector<int32_t> ids;
+    if (ue3::ReadIntArray(obj, "IndexToEventId", &ids) && !ids.empty() && ids.back() == kWindowModeEventId) {
+      AddHdrRow(obj, ue3::CallerObject(stack));
+    }
+    return;
+  }
   if (!post) return;
   if (fn == g_page_on_pop && obj == g_page && g_page) {
     log::Info("menu: HDR page closed");
@@ -374,7 +395,7 @@ void OnCallFunction(ue3::UObject* obj, ue3::UFunction* fn, ue3::FFrame* stack, b
     return;
   }
   if (video) {
-    AddHdrRow(list, obj);
+    if (!g_video_row_added) AddHdrRow(list, obj);
   } else {
     AddPageRows(list);
   }
