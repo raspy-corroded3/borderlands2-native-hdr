@@ -11,7 +11,7 @@ A drop-in `d3d9.dll` that adds **real HDR output** to Borderlands 2 (PC, Steam),
   strength. Changes apply live and are saved to `bl2hdr.ini`.
 - A built-in peak-brightness test pattern to match your display.
 
-> **Status: beta (1.0.0-beta.2).** Tested on one system (Windows 11, NVIDIA RTX 3070 Ti, Samsung
+> **Status: beta (1.0.1-beta.1).** Tested on one system (Windows 11, NVIDIA RTX 3070 Ti, Samsung
 > Odyssey G6 HDR600). Reports from other hardware are very welcome — open an issue with your GPU,
 > driver, display and `bl2hdr.log` (from `Binaries\Win32`).
 
