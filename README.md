@@ -133,10 +133,17 @@ release's notes and in the badge at the top of this page.
   - **Linux via Proton/Wine** (including the Steam Deck): the game-side parts (tonemap, cutscene fix, HDR
     menu) work as they are, but the HDR output needs a new path through DXVK and Vulkan, because Wine has no
     D3D9on12. HDR on Linux also needs an HDR-capable desktop (e.g. gamescope or KDE Plasma on Wayland).
-  - **macOS**: Steam installs Aspyr's native Mac version (64-bit; runs on Apple Silicon through Rosetta 2,
-    reported working on an M2 MacBook Air with macOS 27). It is a different program with its own renderer,
-    so a `d3d9.dll` cannot apply: macOS support would be a separate implementation (a library loaded into
-    the game, hooks on its renderer, the UE3 hooks redone for the Mac binary, HDR output through macOS EDR).
+  - **macOS**: Steam installs Aspyr's native Mac version, which runs on Apple Silicon Macs (macOS 27)
+    through Rosetta 2. It is a different program, so a `d3d9.dll` cannot apply: macOS support would be a
+    separate implementation. What the game binary (`Borderlands2.app/Contents/MacOS/BL2`) shows:
+    - Intel 64-bit (x86_64) code, so the library would also have to be x86_64 to load under Rosetta 2.
+      Being 64-bit, the Mac version has no 4 GB memory limit.
+    - It renders with **Metal** (OpenGL is also linked), which is what macOS HDR (EDR) needs: switch the
+      game's Metal output layer to 16-bit float with extended dynamic range.
+    - It is signed without the hardened runtime or library validation, so macOS allows an extra library to
+      load into the game (e.g. through a Steam launch option).
+    - Still to do: a Metal version of the HDR tonemapper, the cutscene clamp, and the menu hooks for the
+      64-bit Mac binary. Real HDR needs an HDR-capable display (e.g. Apple XDR or an external HDR monitor).
 - Lighting and reflections in HDR (ideas, to explore):
   - HDR intensity for dynamic lights: adjust the game's separate per-light passes (point, spot, directional).
     Expected cost: negligible.
